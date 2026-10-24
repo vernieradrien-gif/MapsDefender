@@ -10,8 +10,9 @@ Tower defense mobile (portrait, une main) joué sur le réseau routier réel aut
 - Cible : web (PWA) puis Android via Capacitor. Portrait, tactile, zones touchables ≥ 48 dp, 60 images/s.
 - Publicités : identifiants de **test** AdMob uniquement, jamais de pub pendant une vague.
 - Français d'abord ; **aucun texte affiché en dur** dans le code : tout passe par `src/i18n`.
-- **Ton bon enfant** : rien de violent ni de réaliste (pas d'armes, pas d'humains ni de véhicules comme ennemis). Tourelles rigolotes, ennemis = Gloutons, base = gâteau.
-- **Style visuel** : ville miniature vue de dessus en pseudo-3D (rues, maisons, parcs), colorée, douce et moderne. Tourelles sur les toits, ou sur des socles si la carte manque de bâtiments.
+- **Ton sérieux et non violent** : des virus stylisés (aucun gore) contre des dispositifs sanitaires ; pas d'armes, pas d'humains ni de véhicules comme ennemis. La base est un bâtiment.
+- **Toutes les rues sont empruntées** : les virus entrent par toutes les rues qui mènent au quartier ; les itinéraires couvrent tout le réseau.
+- **Style visuel** : ville miniature vue de dessus en pseudo-3D (rues, maisons, parcs), colorée, douce et moderne. Tourelles sur les toits (bonus de portée selon la hauteur), ou sur des socles si la carte manque de bâtiments.
 
 ## Règles de code
 

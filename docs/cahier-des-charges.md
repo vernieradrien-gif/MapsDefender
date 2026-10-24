@@ -27,7 +27,7 @@ Tower defense mobile Android où le joueur saisit une adresse (ou utilise sa pos
 - **Cible** : Android (Capacitor) + version web PWA. Français d'abord, textes externalisés (i18n).
 - **Sessions** de 3 à 8 minutes, une main, portrait.
 - **Chaque lieu = carte unique et rejouable** (même adresse = même carte, graine déterministe).
-- **Ton bon enfant** : univers coloré, drôle et non violent. Ni armes réalistes ni ennemis humains ou véhicules : des tourelles rigolotes (bulles, ballons d'eau, tartes…) repoussent des **Gloutons**, petites créatures gourmandes qui veulent manger le gâteau du quartier.
+- **Ton sérieux et non violent** : des **virus** stylisés veulent pénétrer dans le quartier ; le joueur les neutralise avec des **dispositifs sanitaires** (pulvérisateur, diffuseur, laser UV, purificateur). Aucun gore, pas d'armes réalistes, ni humains ni véhicules comme ennemis.
 - **Style visuel** : ville miniature vue de dessus en pseudo-3D (rues, maisons, parcs, arbres), belle et moderne.
 - **Revenu** : pubs récompensées et interstitiels entre deux parties.
 - **Hors v1** : multijoueur, classement en ligne, comptes, achats intégrés, tuiles de carte.
@@ -65,33 +65,35 @@ Tower defense mobile Android où le joueur saisit une adresse (ou utilise sa pos
 
 ## 3. Gameplay
 
-Les Gloutons partent d'une ou plusieurs entrées et suivent les rues jusqu'à la base : **le gâteau du quartier**. Le joueur installe des tourelles **sur les toits des maisons** proches des rues ou, à défaut, sur des **socles** posés au sol.
+Les virus entrent dans le quartier par **toutes les rues qui y mènent** et **toutes les rues sont empruntées** : chaque rue fait partie d'au moins un itinéraire, autant de chemins alternatifs jusqu'à la base, **le bâtiment à protéger**. Le joueur installe des tourelles **sur les toits** des bâtiments proches des rues ou, à défaut, sur des **socles** posés au sol.
 
-**Boucle** : préparation 10 s, vagues successives, argent gagné pour chaque Glouton repoussé, base à 20 PV (le gâteau compte 20 parts), victoire après 30 vagues, score dans tous les cas.
+**Boucle** : préparation 10 s, vagues successives, argent gagné pour chaque virus neutralisé, base à 20 PV, victoire après 30 vagues, score dans tous les cas.
 
-Un Glouton vaincu n'est pas « tué » : rassasié, il disparaît dans un nuage de confettis.
+Un virus neutralisé se dissout (pas de violence graphique).
+
+**Bonus de hauteur** : une tourelle posée sur un bâtiment gagne de la portée selon la hauteur du toit (par exemple +1,2 % par mètre, plafonné à +25 %) ; pas de bonus sur un socle.
 
 ### Tourelles (4)
 
-| Tourelle | Rôle (ancien nom) | Coût | Caractéristiques |
+| Tourelle | Rôle (nom d'origine) | Coût | Caractéristiques |
 |---|---|---|---|
-| Lance-bulles | (Mitrailleuse) | 50 | cadence rapide, faible dégât |
-| Lance-ballons | (Canon) | 100 | ballons d'eau, éclaboussure de zone, lent |
-| Lance-tartes | (Sniper) | 150 | longue portée, dégâts élevés, très lent |
-| Barbe à papa | (Ralentisseur) | 75 | nuage collant : −40 % de vitesse dans sa zone |
+| Pulvérisateur | (Mitrailleuse) | 50 | cadence rapide, faible dégât |
+| Diffuseur | (Canon) | 100 | capsule qui éclate en nuage désinfectant : zone, lent |
+| Laser UV | (Sniper) | 150 | longue portée, dégâts élevés, très lent |
+| Purificateur | (Ralentisseur) | 75 | champ qui ralentit les virus de 40 % dans sa zone |
 
 - 3 niveaux d'amélioration par tour (coût ×1,6 par niveau).
 - Revente à 70 %.
 
-### Ennemis : les Gloutons (5)
+### Ennemis : les virus (5)
 
-| Glouton | Rôle (ancien nom) | PV | Caractéristiques |
+| Virus | Rôle (nom d'origine) | PV | Caractéristiques |
 |---|---|---|---|
-| Glouton | (Piéton) | 20 | vitesse moyenne |
-| Filou | (Cycliste) | 12 | rapide |
-| Bouboule | (Voiture) | 60 | — |
-| Mastodonte | (Camion) | 200 | lent, grosses bouchées (gros dégâts à la base) |
-| Roi Glouton (boss, toutes les 10 vagues) | (Convoi) | 800 | se scinde en 3 Bouboules quand il est vaincu |
+| Virus | (Piéton) | 20 | vitesse moyenne |
+| Variant | (Cycliste) | 12 | rapide |
+| Amas | (Voiture) | 60 | — |
+| Blindé | (Camion) | 200 | lent, gros dégâts à la base |
+| Méga-virus (boss, toutes les 10 vagues) | (Convoi) | 800 | se divise en 3 Amas quand il est neutralisé |
 
 ### Économie
 
@@ -102,8 +104,8 @@ Un Glouton vaincu n'est pas « tué » : rassasié, il disparaît dans un nuage 
 
 ### Adaptation à la carte
 
-- Nombre d'ennemis par vague et argent de départ proportionnels à la longueur du chemin.
-- Plusieurs entrées : les vagues se répartissent entre les chemins, qui convergent vers la base.
+- Nombre d'ennemis par vague et argent de départ proportionnels à la longueur moyenne des itinéraires.
+- Plusieurs entrées et itinéraires : les vagues se répartissent entre eux ; tous convergent vers la base.
 
 ## 4. Génération de carte (jalon 4)
 
@@ -115,11 +117,15 @@ Un Glouton vaincu n'est pas « tué » : rassasié, il disparaît dans un nuage 
 3. **Projection** équirectangulaire locale en mètres, mise à l'échelle écran.
 4. **Graphe** : nœuds partagés = carrefours, arêtes pondérées par la longueur.
 5. **Simplification** : impasses < 30 m supprimées, fusion des nœuds à moins de 8 m, Douglas-Peucker tolérance 3 m, plus grande composante connexe seulement.
-6. **Base** = nœud le plus proche du centre ; **entrées** = nœuds de bord éloignés d'au moins 60 % du rayon et espacés d'au moins 90° autour de la base, 1 à 3 entrées.
-7. **Dijkstra** entrée → base, chemin d'au moins 600 m (sinon retirer des entrées proches ou agrandir le rayon jusqu'à 600 m).
+6. **Base** = un bâtiment :
+   - si le joueur donne une **adresse précise** (avec numéro), le bâtiment à cette adresse ;
+   - sinon (nom de rue, lieu, position GPS), le bâtiment **le plus imposant ou le plus central** du quartier (emprise × hauteur, proximité du centre) ;
+   - la base est reliée au nœud de rue le plus proche.
+   **Entrées** = extrémités des rues au bord de la zone : les virus arrivent par toutes les rues qui entrent dans le quartier.
+7. **Itinéraires** : pour chaque entrée, le plus court chemin (Dijkstra) vers la base ; puis des itinéraires supplémentaires, sans repasser deux fois par le même carrefour, jusqu'à ce que **chaque rue soit empruntée** par au moins un itinéraire. Longueur moyenne des itinéraires d'au moins 600 m (sinon agrandir le rayon, jusqu'à 600 m).
 8. **Emplacements de tourelles**, 25 à 60 par carte :
-   - en priorité **sur les toits** : un emplacement par bâtiment dont le centre est à moins de 40 m du chemin, emplacements espacés d'au moins 25 m ;
-   - si la carte n'a pas assez de bâtiments : **socles** posés au sol de chaque côté du chemin à 12 m de l'axe, espacés de 25 m, sans chevaucher une rue ni un bâtiment.
+   - en priorité **sur les toits** : un emplacement par bâtiment dont le centre est à moins de 40 m d'un itinéraire, emplacements espacés d'au moins 25 m ;
+   - si la carte n'a pas assez de bâtiments : **socles** posés au sol de chaque côté des itinéraires à 12 m de l'axe, espacés de 25 m, sans chevaucher une rue ni un bâtiment.
 
 ### Déterminisme et cache
 
@@ -131,7 +137,7 @@ Un Glouton vaincu n'est pas « tué » : rassasié, il disparaît dans un nuage 
 | Situation | Comportement |
 |---|---|
 | Zone rurale | agrandir le rayon, puis carte aléatoire de secours avec message |
-| Aucun chemin de 600 m | idem |
+| Itinéraires trop courts (moyenne < 600 m) | idem |
 | Overpass en erreur | 2 miroirs, puis bouton Réessayer |
 | Hors connexion | cartes en cache + carte locale générée |
 | Adresse introuvable | message |
@@ -139,7 +145,8 @@ Un Glouton vaincu n'est pas « tué » : rassasié, il disparaît dans un nuage 
 ### Rendu
 
 - Ville miniature vue de dessus en **pseudo-3D** : bâtiments extrudés (murs, toits, ombres portées), arbres, parcs, eau.
-- Rues en vectoriel (trait arrondi, largeur selon le type de voie, trottoirs), le chemin des Gloutons repérable d'un coup d'œil.
+- **Modèles de bâtiments au plus proche de la réalité** : vraies emprises OSM ; maisons à toit à deux pans (`building=house`, `detached`…), immeubles à toit plat dont la hauteur suit `building:levels` (`apartments`, `commercial`…), bâtiments publics reconnaissables (mairie, école, église…).
+- Rues en vectoriel (trait arrondi, largeur selon le type de voie, trottoirs) ; entrées des virus et base repérables d'un coup d'œil.
 - Style coloré, doux et moderne, sans tuiles.
 - Mention **« © OpenStreetMap contributors »** dans À propos et sur l'écran de choix de carte (licence ODbL).
 
@@ -150,7 +157,7 @@ Portrait, zones tactiles d'au moins 48 dp.
 - **Accueil** : Jouer, cartes récentes, gemmes, Améliorations, Paramètres.
 - **Choix du lieu** : champ adresse, bouton Ma position, cartes en cache, aperçu du tracé, rayon.
 - **Chargement** : étapes animées, Annuler.
-- **Partie** : carte plein écran, barre haute (argent / parts de gâteau / vague), barre basse (Vague suivante, vitesse ×1/×2/×3), pause ; construction par menu radial.
+- **Partie** : carte plein écran, barre haute (argent / PV de la base / vague), barre basse (Vague suivante, vitesse ×1/×2/×3), pause ; construction, amélioration et revente par menu radial.
 - **Fin de partie** : score, vague, gemmes, bouton Doubler (pub), Rejouer, Partager.
 - **Améliorations**.
 
@@ -205,7 +212,7 @@ Portrait, zones tactiles d'au moins 48 dp.
 - Carte jouable en moins de 8 s sur 4G.
 - Même adresse = même carte.
 - Carte en cache ouverte hors ligne.
-- Aucune partie injouable (chemin ≥ 600 m, au moins 25 emplacements).
+- Aucune partie injouable (itinéraires de 600 m en moyenne, au moins 25 emplacements).
 - Pubs récompensées OK et jamais pendant une vague.
 - Consentement RGPD au premier lancement dans l'Espace économique européen.
 - 60 images/s avec 150 ennemis.
@@ -218,3 +225,9 @@ Portrait, zones tactiles d'au moins 48 dp.
   - rendu en ville miniature pseudo-3D (rues, maisons, parcs) au lieu du néon sur fond sombre ;
   - tourelles sur les toits des bâtiments, socles au sol si la carte manque de bâtiments ;
   - requête Overpass élargie aux bâtiments, espaces verts et plans d'eau.
+- **Révision 2 (24/10/2026)**, demandée après la révision 1 :
+  - thème plus sérieux : des virus (Virus, Variant, Amas, Blindé, Méga-virus) contre des dispositifs sanitaires (Pulvérisateur, Diffuseur, Laser UV, Purificateur) ; la base est un bâtiment ; rôles et chiffres inchangés ;
+  - toutes les rues sont empruntées : entrées = toutes les rues qui entrent dans le quartier, itinéraires couvrant tout le réseau ; le critère des 600 m porte sur la longueur moyenne des itinéraires ;
+  - base = bâtiment à l'adresse précise donnée, sinon bâtiment le plus imposant ou central ;
+  - bonus de portée selon la hauteur du bâtiment qui porte la tourelle ;
+  - jalon 4 : modèles de bâtiments au plus proche de la réalité.
