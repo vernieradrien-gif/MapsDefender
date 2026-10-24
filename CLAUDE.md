@@ -28,8 +28,8 @@ Tower defense mobile (portrait, une main) joué sur le réseau routier réel aut
 ```
 src/
   game/     simulation pure (Game, vagues, économie, ciblage, boucle à pas fixe)
-  geo/      cartes : carte fixe (jalon 1), plus tard OSM, graphe, Dijkstra
-  render/   dessin Canvas 2D (caméra, thème néon, effets)
+  geo/      cartes : carte fixe, générateur de quartier, emplacements toit/socle ; plus tard OSM, graphe, Dijkstra
+  render/   dessin Canvas 2D pseudo-3D (caméra, ville, personnages, effets)
   ui/       HUD, menu radial, écrans (DOM par-dessus le canvas)
   ads/      interface showRewarded/showInterstitial (factice sur le web)
   storage/  localStorage / IndexedDB

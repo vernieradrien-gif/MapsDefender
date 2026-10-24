@@ -1,28 +1,28 @@
 # StreetDefense
 
-Tower defense mobile (portrait, une main) joué sur les rues réelles autour d'une adresse, avec les données OpenStreetMap.
+Tower defense mobile (portrait, une main) joué dans les rues d'un vrai quartier, avec les données OpenStreetMap.
+Les **Gloutons**, petites créatures gourmandes, veulent manger le gâteau du quartier ; tu les repousses avec des tourelles rigolotes installées sur les toits.
 Cahier des charges complet : [`docs/cahier-des-charges.md`](docs/cahier-des-charges.md).
 
-**État : jalon 1** — boucle de jeu complète sur une carte fixe (sans OpenStreetMap).
+**État : jalon 1** : boucle de jeu complète sur une carte fixe (sans OpenStreetMap), avec le rendu « ville miniature ».
 
 ## Tester sur téléphone
 
 👉 **https://vernieradrien-gif.github.io/MapsDefender/**
 
 Le site est publié automatiquement par GitHub Actions à chaque modification de la branche `main`.
-Prérequis (une seule fois) : *Settings > Pages > Source : GitHub Actions*.
 
-Mode test : **https://vernieradrien-gif.github.io/MapsDefender/?debug** (5 000 d'argent au départ, pour atteindre vite la fin de partie).
+Mode test : **https://vernieradrien-gif.github.io/MapsDefender/?debug** (5 000 pièces au départ, pour atteindre vite la fin de partie).
 
 ## Comment jouer
 
-- Touchez **Jouer**. Vous avez 10 s de préparation avant la vague 1.
-- Touchez un **emplacement ◯** le long de la rue : un menu radial propose la **Mitrailleuse** (50, tir rapide, faibles dégâts) ou le **Canon** (100, lent, dégâts de zone). Une tour trop chère est grisée.
-- Touchez une tour posée pour voir sa **portée**.
-- Les **Piétons** (ronds jaunes), **Cyclistes** (triangles roses, rapides) et **Voitures** (rectangles rouges, résistantes) suivent la rue jusqu'à la base (hexagone violet, 20 PV).
-- Chaque ennemi tué rapporte de l'argent ; chaque vague terminée rapporte un bonus de 10 + 2 × numéro de vague.
-- **Vague suivante** lance la prochaine vague sans attendre le compte à rebours ; le bouton **x1 / x2 / x3** change la vitesse ; **⏸** met en pause.
-- Victoire après la vague 30, défaite si la base tombe à 0 PV. Le score s'affiche dans les deux cas.
+- Touche **Jouer**. Tu as 10 s de préparation avant la vague 1.
+- Touche un **toit marqué d'un ⊕** près de la rue (ou un **socle** au sol) : un menu propose le **Lance-bulles** (50 pièces, tire vite, petits dégâts) ou le **Lance-ballons** (100 pièces, lent, ses ballons d'eau éclaboussent toute une zone). Une tourelle trop chère est grisée.
+- Touche une tourelle posée pour voir sa **portée**.
+- Les **Gloutons** (verts), **Filous** (violets, rapides) et **Bouboules** (orange, résistantes) suivent les **flèches orange** jusqu'au **gâteau** : chaque Glouton qui l'atteint en mange une part (deux pour une Bouboule). Le gâteau a 20 parts.
+- Chaque Glouton repoussé rapporte des pièces ; chaque vague terminée rapporte un bonus de 10 + 2 × numéro de vague.
+- **Vague suivante** lance la prochaine vague sans attendre ; **x1 / x2 / x3** change la vitesse ; **⏸** met en pause.
+- Victoire après la vague 30, défaite si le gâteau est entièrement mangé. Le score s'affiche dans les deux cas.
 
 ## Développement
 
@@ -38,31 +38,42 @@ Organisation du code (détails dans [`CLAUDE.md`](CLAUDE.md)) :
 ```
 src/
   game/     simulation pure : Game, vagues, économie, ciblage, boucle à pas fixe (+ tests)
-  geo/      carte fixe du jalon 1 (fixed-map.json) ; plus tard OSM, graphe, Dijkstra
-  render/   Canvas 2D : caméra, thème néon, effets
+  geo/      carte fixe (fixed-map.json), générateur de quartier, placement des emplacements
+  render/   Canvas 2D pseudo-3D : ville, personnages, effets
   ui/       HUD, menu radial, écrans (DOM au-dessus du canvas)
   ads/      interface showRewarded / showInterstitial (factice sur le web)
   storage/  accès localStorage protégé
-  config/   balance.json — tout l'équilibrage (documenté dans src/config/README.md)
+  config/   balance.json : tout l'équilibrage (documenté dans src/config/README.md)
   i18n/     textes (fr.json)
 ```
 
-Le jeu reçoit une **carte** (`GameMap` dans `src/game/types.ts` : chemins + emplacements + base + rues décoratives). Au jalon 1 elle vient de `src/geo/fixed-map.json` ; au jalon 4 elle sera générée depuis OpenStreetMap, sans changer la simulation.
+Le jeu reçoit une **carte** (`GameMap` dans `src/game/types.ts`) : chemins, emplacements, base, rues, bâtiments, parcs, eau et arbres. Au jalon 1 elle est construite à partir de `src/geo/fixed-map.json` ; au jalon 4 elle viendra d'OpenStreetMap, sans changer la simulation ni le rendu.
 
-## Décisions prises (jalon 1)
+## Décisions prises
 
-Choix faits sans validation explicite, à revoir si besoin :
+Choix faits sans validation explicite, à revoir si besoin.
 
-- **Dépôt vide au départ** : une branche `main` a été créée avec un commit initial vide, pour pouvoir ouvrir la pull request.
-- **Unités** : tout est en mètres et secondes, comme le seront les cartes OSM. La carte fixe fait 240 × 395 m, avec un chemin de ~1 140 m et 28 emplacements à ~15 m de l'axe de la rue.
-- **Enchaînement des vagues** : 10 s de préparation, puis la vague suivante démarre automatiquement 6 s après l'apparition du dernier ennemi de la vague en cours (les vagues peuvent donc se chevaucher). « Vague suivante » écourte ce compte à rebours ; le bouton est inactif pendant qu'une vague apparaît, ce qui évite de lancer deux vagues d'un double toucher.
-- **Bonus de fin de vague** : versé quand tous les ennemis de la vague sont résolus (tués ou arrivés à la base).
-- **Score** : ennemi tué = points de l'ennemi × numéro de vague ; vague terminée = 50 × numéro de vague ; victoire = 100 × PV restants.
-- **Ciblage** : chaque tour vise l'ennemi à portée le plus proche de la base. La Mitrailleuse touche instantanément ; l'obus du Canon suit sa cible puis explose (rayon 20 m).
-- **Valeurs non fixées par le cahier des charges** (vitesses, portées, dégâts, gains par ennemi, nombre d'ennemis par vague) : voir `src/config/balance.json`. Équilibrage **provisoire**, vérifié par simulation automatique : avec les 28 emplacements bien remplis on gagne en perdant quelques PV dans les dernières vagues ; avec moins d'une vingtaine de tours on perd vers la vague 29-30. Le début de partie est facile ; l'équilibrage complet (améliorations, revente, nouveaux ennemis) est l'objet du jalon 2.
-- **Interface** : la construction passe par le menu radial (§ 5 du cahier des charges) ; la barre basse contient « Vague suivante » et la vitesse, la pause est dans la barre haute. Pause automatique quand l'appli passe en arrière-plan.
-- **Fluidité** : la simulation tourne à 60 pas/s fixes ; l'affichage interpole les positions, pour rester fluide sur les écrans 90/120 Hz. Mesure en navigateur : < 1 ms de calcul par image avec 400 ennemis et 28 tours.
+### Révision 1 : ville miniature et ton bon enfant
+
+- **Noms** : le Lance-bulles remplace la Mitrailleuse, le Lance-ballons le Canon ; plus tard, le Lance-tartes remplacera le Sniper et la Barbe à papa le Ralentisseur. Les ennemis deviennent Glouton, Filou, Bouboule, puis Mastodonte et Roi Glouton. La base devient le gâteau du quartier, avec 20 parts = 20 PV. Les rôles et les chiffres du cahier des charges ne changent pas. Le cahier des charges a été mis à jour en ce sens (§ « Historique des révisions »).
+- **Aucune violence** : un Glouton vaincu disparaît dans des confettis ; quand il atteint le gâteau, il en croque une part (« Miam ! »).
+- **Rendu** : vue de dessus en pseudo-3D sur Canvas 2D, sans moteur 3D. Les bâtiments sont extrudés : murs ombrés selon l'orientation, fenêtres, toits plats ou à deux pans, ombres portées vers le sud-est. S'y ajoutent les arbres, un parc avec étang, des trottoirs, et des chevrons orange peints sur le chemin des Gloutons. Le décor est dessiné une seule fois dans un calque ; seuls les personnages et les effets sont redessinés à chaque image.
+- **Emplacements** : sur les toits des bâtiments dont le centre est à moins de 40 m du chemin, au plus proche d'abord, espacés d'au moins 28 m. Des **socles** au sol complètent là où un tronçon du chemin n'a aucun emplacement à 30 m, puis jusqu'au minimum de 25. La carte fixe compte 46 emplacements : 45 toits et 1 socle placé à la main au milieu du parc, pour montrer à quoi ressemble un socle.
+- **Carte fixe** : les rues, le parc, l'étang et la place du gâteau sont dessinés à la main. Les maisons et les arbres sont générés automatiquement le long des rues, toujours à l'identique (graine fixe).
+- **Tirs** : les deux tourelles tirent des projectiles visibles qui suivent leur cible. La bulle touche un seul Glouton ; le ballon d'eau, lancé en cloche, éclabousse une zone de 20 m. Chaque tourelle vise le Glouton à portée le plus proche du gâteau.
+- **Police** : Fredoka (licence libre OFL), embarquée dans le site ; aucun appel à un serveur externe.
+
+### Jalon 1
+
+- **Dépôt vide au départ** : une branche `main` a été créée avec un commit initial vide.
+- **Unités** : tout est en mètres et secondes, comme le seront les cartes OSM. La carte fixe fait 220 × 382 m, avec un chemin d'environ 1 200 m.
+- **Enchaînement des vagues** : 10 s de préparation. Ensuite, la vague suivante démarre 6 s après l'apparition du dernier Glouton de la vague en cours, donc les vagues peuvent se chevaucher. « Vague suivante » écourte ce compte à rebours ; le bouton est inactif pendant qu'une vague apparaît.
+- **Bonus de fin de vague** : versé quand tous les Gloutons de la vague sont résolus, qu'ils soient repoussés ou arrivés au gâteau.
+- **Score** : chaque Glouton repoussé rapporte ses points × le numéro de vague ; chaque vague terminée, 50 × le numéro de vague ; la victoire, 100 × les parts restantes.
+- **Équilibrage provisoire**, vérifié par simulation automatique. Avec 46 emplacements, il faut environ 30 tourelles bien choisies pour sauver le gâteau ; avec moins de 20, on perd vers les vagues 26 à 30. Le début de partie est facile. L'équilibrage complet (améliorations, revente, nouveaux Gloutons) est l'objet du jalon 2.
+- **Interface** : la construction passe par un menu radial. La barre basse contient « Vague suivante » et la vitesse ; la pause est dans la barre haute. Le jeu se met en pause automatiquement quand l'appli passe en arrière-plan.
+- **Fluidité** : la simulation tourne à 60 pas/s fixes et l'affichage interpole les positions (écrans 90/120 Hz).
 - **Vitesse** : le choix x1/x2/x3 est mémorisé sur l'appareil.
-- **Erreurs** : en cas de plantage, le message s'affiche à l'écran (pratique pour le signaler avec une capture).
-- **Pas encore de PWA installable** (manifeste, mode hors ligne) : prévu avec les écrans et la sauvegarde (jalons 3 et 5).
+- **Erreurs** : en cas de plantage, le message s'affiche à l'écran.
+- **Pas encore de PWA installable** (manifeste, mode hors ligne) : prévu aux jalons 3 et 5.
 - **Outils** : Vite 8, TypeScript 7, Vitest 5, Node 22.
