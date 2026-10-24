@@ -1,0 +1,53 @@
+{
+  "app.title": "StreetDefense",
+  "app.tagline": "Défendez votre base, rue après rue.",
+
+  "start.play": "Jouer",
+  "start.hint": "Touchez un emplacement ◯ le long de la rue pour y construire une tour. Les ennemis suivent la rue jusqu'à votre base.",
+  "start.debug": "Mode test : argent de départ {money}",
+
+  "map.fixed.name": "Quartier de démonstration",
+
+  "hud.money": "Argent",
+  "hud.base": "PV de la base",
+  "hud.wave": "Vague",
+  "hud.waveValue": "{current}/{total}",
+  "hud.nextWave": "Vague suivante",
+  "hud.nextWaveIn": "Vague suivante · {seconds} s",
+  "hud.waveInProgress": "Vague {current} en cours",
+  "hud.lastWave": "Dernière vague",
+  "hud.speed": "Vitesse",
+  "hud.speedValue": "x{speed}",
+  "hud.pause": "Pause",
+
+  "tower.mitrailleuse.name": "Mitrailleuse",
+  "tower.canon.name": "Canon",
+  "tower.cost": "{cost}",
+  "tower.range": "Portée {range} m",
+  "menu.close": "Fermer",
+
+  "enemy.pieton.name": "Piéton",
+  "enemy.cycliste.name": "Cycliste",
+  "enemy.voiture.name": "Voiture",
+
+  "toast.waveStarted": "Vague {wave}",
+  "toast.waveCleared": "Vague {wave} terminée · +{bonus}",
+  "toast.notEnoughMoney": "Pas assez d'argent",
+
+  "pause.title": "Pause",
+  "pause.resume": "Reprendre",
+  "pause.restart": "Recommencer",
+
+  "end.victory": "Victoire !",
+  "end.defeat": "Défaite",
+  "end.victoryText": "La base a tenu les {total} vagues.",
+  "end.defeatText": "La base est tombée à la vague {wave}.",
+  "end.score": "Score",
+  "end.wave": "Vague atteinte",
+  "end.kills": "Ennemis éliminés",
+  "end.baseHp": "PV restants",
+  "end.replay": "Rejouer",
+
+  "error.title": "Oups, une erreur est survenue",
+  "error.reload": "Recharger"
+}
