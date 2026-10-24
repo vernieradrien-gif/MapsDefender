@@ -147,20 +147,29 @@ export function buildStreetGraph(streets: readonly Street[], tolerance = 0.5): S
   };
   const edges: GraphEdge[] = [];
   const seen = new Set<string>();
+  const addEdge = (ids: number[]) => {
+    const a = toNode(ids[0]!);
+    const b = toNode(ids[ids.length - 1]!);
+    if (a === b) {
+      // Rue en boucle : on la coupe en deux tronçons au point du milieu.
+      if (ids.length < 4) return;
+      const mid = Math.floor(ids.length / 2);
+      addEdge(ids.slice(0, mid + 1));
+      addEdge(ids.slice(mid));
+      return;
+    }
+    const key = ids.length === 2 ? [Math.min(a, b), Math.max(a, b)].join('-') : '';
+    if (key !== '' && seen.has(key)) return;
+    if (key) seen.add(key);
+    const pts = ids.map((id) => ({ x: points[id]!.x, y: points[id]!.y }));
+    edges.push({ id: edges.length, a, b, points: pts, length: polylineLength(pts) });
+  };
   for (const chain of chains) {
     if (chain.length < 2) continue;
     let start = 0;
     for (let k = 1; k < chain.length; k++) {
       if (!isJunction(chain, k)) continue;
-      const ids = chain.slice(start, k + 1);
-      const a = toNode(ids[0]!);
-      const b = toNode(ids[ids.length - 1]!);
-      const key = ids.length === 2 ? [Math.min(a, b), Math.max(a, b)].join('-') : '';
-      if (a !== b && (key === '' || !seen.has(key))) {
-        if (key) seen.add(key);
-        const pts = ids.map((id) => ({ x: points[id]!.x, y: points[id]!.y }));
-        edges.push({ id: edges.length, a, b, points: pts, length: polylineLength(pts) });
-      }
+      addEdge(chain.slice(start, k + 1));
       start = k;
     }
   }
@@ -235,18 +244,22 @@ export interface Route {
 /**
  * Itinéraires des virus : le plus court chemin depuis chaque entrée, puis des
  * itinéraires supplémentaires (sans repasser par un même carrefour) jusqu'à ce
- * que chaque tronçon soit emprunté par au moins un itinéraire.
+ * que chaque tronçon soit emprunté par au moins un itinéraire. Un tronçon
+ * qu'aucun itinéraire simple ne peut emprunter (impasse, boucle accrochée par
+ * un seul carrefour) est renvoyé dans `uncovered`.
  */
 export function coverRoutes(
   graph: StreetGraph,
-  entries: readonly number[],
+  entryNodes: readonly number[],
   base: number,
 ): { routes: Route[]; uncovered: number[] } {
+  const entries = [...new Set(entryNodes)].filter((e) => e !== base);
   const routes: Route[] = [];
   const covered = new Set<number>();
   const fromEntry = new Map(entries.map((e) => [e, dijkstra(graph, e)]));
   // Pour le début des itinéraires supplémentaires : ne pas passer par la base.
   const fromEntryAvoidingBase = new Map(entries.map((e) => [e, dijkstra(graph, e, new Set([base]))]));
+  const entrySet = new Set(entries);
   const toBase = dijkstra(graph, base);
   const baseDistance = (e: GraphEdge) => Math.min(toBase.dist[e.a]!, toBase.dist[e.b]!);
   const lengthOf = (edges: number[]) => edges.reduce((s, id) => s + graph.edges[id]!.length, 0);
@@ -280,10 +293,114 @@ export function coverRoutes(
         if (!best || length < best.length) best = { entry, nodes, edges, length };
       }
     }
+    // Le plus court accès peut couper la suite : on cherche alors un itinéraire exact (flot).
+    best ??= routeThroughEdge(graph, edge, entrySet, base);
     if (best) addRoute(best.entry, best.nodes, best.edges);
     else uncovered.push(edge.id);
   }
   return { routes, uncovered: uncovered.filter((id) => !covered.has(id)) };
+}
+
+/**
+ * Itinéraire simple entrée → base empruntant `edge`, s'il en existe un.
+ * Calcul exact par flot maximal (nœuds de capacité 1) : deux chemins disjoints
+ * partent des extrémités de l'arête, l'un vers une entrée, l'autre vers la
+ * base. L'itinéraire trouvé n'est pas forcément le plus court.
+ */
+function routeThroughEdge(
+  graph: StreetGraph,
+  edge: GraphEdge,
+  entries: ReadonlySet<number>,
+  base: number,
+): { entry: number; nodes: number[]; edges: number[]; length: number } | null {
+  const n = graph.nodes.length;
+  const IN = (id: number) => 2 * id;
+  const OUT = (id: number) => 2 * id + 1;
+  const ENTRY = 2 * n;
+  const SINK = 2 * n + 1;
+  const SOURCE = 2 * n + 2;
+  const head = new Array<number>(2 * n + 3).fill(-1);
+  const to: number[] = [];
+  const cap: number[] = [];
+  const next: number[] = [];
+  const tag: number[] = [];
+  const arc = (from: number, target: number, capacity: number, edgeId = -1) => {
+    const k = to.length;
+    to.push(target, from);
+    cap.push(capacity, 0);
+    tag.push(edgeId, -1);
+    next.push(head[from]!, head[target]!);
+    head[from] = k;
+    head[target] = k + 1;
+  };
+
+  const ends = [edge.a, edge.b];
+  for (const node of graph.nodes) {
+    if (ends.includes(node.id)) continue;
+    arc(IN(node.id), node.id === base ? SINK : OUT(node.id), 1);
+  }
+  for (const id of ends) {
+    arc(SOURCE, OUT(id), 1);
+    if (id === base) arc(OUT(id), SINK, 1);
+  }
+  for (const id of entries) arc(OUT(id), ENTRY, 1);
+  arc(ENTRY, SINK, 1);
+  for (const e of graph.edges) {
+    if (e.id === edge.id) continue;
+    if (!ends.includes(e.b) && e.a !== base) arc(OUT(e.a), IN(e.b), 1, e.id);
+    if (!ends.includes(e.a) && e.b !== base) arc(OUT(e.b), IN(e.a), 1, e.id);
+  }
+
+  // Deux augmentations par parcours en largeur.
+  for (let flow = 0; flow < 2; flow++) {
+    const prev = new Array<number>(head.length).fill(-1);
+    const queue = [SOURCE];
+    for (let qi = 0; qi < queue.length && prev[SINK] === -1; qi++) {
+      const x = queue[qi]!;
+      for (let k = head[x]!; k >= 0; k = next[k]!) {
+        const y = to[k]!;
+        if (cap[k]! > 0 && y !== SOURCE && prev[y] === -1) {
+          prev[y] = k;
+          queue.push(y);
+        }
+      }
+    }
+    if (prev[SINK] === -1) return null;
+    for (let y = SINK; y !== SOURCE; ) {
+      const k = prev[y]!;
+      cap[k]!--;
+      cap[k ^ 1]!++;
+      y = to[k ^ 1]!;
+    }
+  }
+
+  // Lecture des deux chemins : on suit les arcs portant du flot.
+  const walk = (start: number) => {
+    const nodes = [start];
+    const edges: number[] = [];
+    let x = OUT(start);
+    for (;;) {
+      let k = head[x]!;
+      while (k >= 0 && (k % 2 !== 0 || cap[k]! !== 0)) k = next[k]!;
+      if (k < 0) return null;
+      const y = to[k]!;
+      if (y === SINK) return { nodes, edges, toEntry: false };
+      if (y === ENTRY) return { nodes, edges, toEntry: true };
+      if (y % 2 === 0) {
+        edges.push(tag[k]!);
+        nodes.push(y / 2);
+      }
+      x = y;
+    }
+  };
+  const pa = walk(edge.a);
+  const pb = walk(edge.b);
+  if (!pa || !pb || pa.toEntry === pb.toEntry) return null;
+  const [toEntry, toBase] = pa.toEntry ? [pa, pb] : [pb, pa];
+  const nodes = [...[...toEntry.nodes].reverse(), ...toBase.nodes];
+  const edges = [...[...toEntry.edges].reverse(), edge.id, ...toBase.edges];
+  const length = edges.reduce((s, id) => s + graph.edges[id]!.length, 0);
+  return { entry: nodes[0]!, nodes, edges, length };
 }
 
 /** Tracé complet d'un itinéraire. */
