@@ -10,11 +10,13 @@ Tower defense mobile (portrait, une main) joué sur le réseau routier réel aut
 - Cible : web (PWA) puis Android via Capacitor. Portrait, tactile, zones touchables ≥ 48 dp, 60 images/s.
 - Publicités : identifiants de **test** AdMob uniquement, jamais de pub pendant une vague.
 - Français d'abord ; **aucun texte affiché en dur** dans le code : tout passe par `src/i18n`.
+- **Ton bon enfant** : rien de violent ni de réaliste (pas d'armes, pas d'humains ni de véhicules comme ennemis). Tourelles rigolotes, ennemis = Gloutons, base = gâteau.
+- **Style visuel** : ville miniature vue de dessus en pseudo-3D (rues, maisons, parcs), colorée, douce et moderne. Tourelles sur les toits, ou sur des socles si la carte manque de bâtiments.
 
 ## Règles de code
 
 - TypeScript strict, pas de `any`. Canvas 2D natif, pas de moteur de jeu ni de framework UI.
-- **Simulation séparée du rendu** : `src/game` ne touche jamais au DOM ni au canvas ; pas de temps fixe de 1/60 s.
+- **Simulation séparée du rendu** : `src/game` ne touche jamais au DOM ni au canvas ; elle avance à pas de temps fixe (1/60 s).
 - **Aucune valeur d'équilibrage en dur** : tout est dans `src/config/balance.json` (documenté dans `src/config/README.md`).
 - Le jeu reçoit une **carte** (`GameMap` : chemins + emplacements + base), qu'elle soit codée en dur ou générée.
 - Déterminisme : tout aléa de la simulation passe par le générateur à graine (`src/game/rng.ts`).
@@ -26,8 +28,8 @@ Tower defense mobile (portrait, une main) joué sur le réseau routier réel aut
 ```
 src/
   game/     simulation pure (Game, vagues, économie, ciblage, boucle à pas fixe)
-  geo/      cartes : carte fixe (jalon 1), plus tard OSM, graphe, Dijkstra
-  render/   dessin Canvas 2D (caméra, thème néon, effets)
+  geo/      cartes : carte fixe, générateur de quartier, emplacements toit/socle ; plus tard OSM, graphe, Dijkstra
+  render/   dessin Canvas 2D pseudo-3D (caméra, ville, personnages, effets)
   ui/       HUD, menu radial, écrans (DOM par-dessus le canvas)
   ads/      interface showRewarded/showInterstitial (factice sur le web)
   storage/  localStorage / IndexedDB

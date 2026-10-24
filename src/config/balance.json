@@ -4,7 +4,11 @@
     "stepsPerSecond": 60,
     "maxFrameSeconds": 0.25,
     "maxStepsPerFrame": 12,
-    "speeds": [1, 2, 3]
+    "speeds": [
+      1,
+      2,
+      3
+    ]
   },
   "base": {
     "hp": 20
@@ -24,45 +28,86 @@
     "interWaveSeconds": 6,
     "hpGrowth": 1.12,
     "countBase": 6,
-    "countPerWave": 0.6,
+    "countPerWave": 0.8,
     "spawnIntervalStart": 0.9,
     "spawnIntervalPerWave": -0.015,
     "spawnIntervalMin": 0.45,
     "laneOffsetMax": 2.5,
     "composition": [
-      { "enemy": "pieton", "fromWave": 1, "weight": 4 },
-      { "enemy": "cycliste", "fromWave": 3, "weight": 2 },
-      { "enemy": "voiture", "fromWave": 5, "weight": 1 }
+      {
+        "enemy": "glouton",
+        "fromWave": 1,
+        "weight": 4
+      },
+      {
+        "enemy": "filou",
+        "fromWave": 3,
+        "weight": 2
+      },
+      {
+        "enemy": "bouboule",
+        "fromWave": 5,
+        "weight": 1
+      }
     ]
   },
   "enemies": [
-    { "id": "pieton", "hp": 20, "speed": 30, "reward": 6, "baseDamage": 1, "score": 10 },
-    { "id": "cycliste", "hp": 12, "speed": 48, "reward": 5, "baseDamage": 1, "score": 10 },
-    { "id": "voiture", "hp": 60, "speed": 36, "reward": 12, "baseDamage": 2, "score": 30 }
+    {
+      "id": "glouton",
+      "hp": 20,
+      "speed": 30,
+      "reward": 6,
+      "baseDamage": 1,
+      "score": 10
+    },
+    {
+      "id": "filou",
+      "hp": 12,
+      "speed": 48,
+      "reward": 5,
+      "baseDamage": 1,
+      "score": 10
+    },
+    {
+      "id": "bouboule",
+      "hp": 60,
+      "speed": 36,
+      "reward": 12,
+      "baseDamage": 2,
+      "score": 30
+    }
   ],
   "towers": [
     {
-      "id": "mitrailleuse",
-      "kind": "hitscan",
+      "id": "bulles",
       "cost": 50,
       "range": 50,
       "damage": 6,
-      "fireInterval": 0.2
+      "fireInterval": 0.2,
+      "projectileSpeed": 150,
+      "splashRadius": 0
     },
     {
-      "id": "canon",
-      "kind": "shell",
+      "id": "ballons",
       "cost": 100,
       "range": 58,
       "damage": 30,
       "fireInterval": 1.4,
-      "splashRadius": 20,
-      "projectileSpeed": 160
+      "projectileSpeed": 90,
+      "splashRadius": 20
     }
   ],
   "mapRules": {
     "slotMinDistanceFromPath": 10,
-    "slotMinSpacing": 18,
+    "slotMinSpacing": 28,
+    "roofMaxDistanceFromPath": 40,
+    "padOffsetFromPath": 12,
+    "padStep": 25,
+    "padCoverageRadius": 30,
+    "padClearance": 4,
+    "padElevation": 0.6,
+    "minSlots": 25,
+    "maxSlots": 60,
     "baseMaxDistanceFromPathEnd": 1
   },
   "debug": {

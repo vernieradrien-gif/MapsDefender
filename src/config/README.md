@@ -19,7 +19,7 @@ Unités : distances en **mètres** (unités de carte), durées en **secondes**, 
 
 | Champ | Rôle |
 |---|---|
-| `hp` | Points de vie de la base (20). |
+| `hp` | Points de vie de la base : le gâteau compte autant de parts (20). |
 
 ## `economy`
 
@@ -33,9 +33,9 @@ Unités : distances en **mètres** (unités de carte), durées en **secondes**, 
 | Champ | Rôle |
 |---|---|
 | `perWaveCleared` | Points par vague terminée, multipliés par le numéro de la vague. |
-| `perBaseHpOnVictory` | Points par PV de base restant en cas de victoire. |
+| `perBaseHpOnVictory` | Points par part de gâteau restante en cas de victoire. |
 
-Chaque ennemi tué rapporte aussi `score × numéro de vague` (voir `enemies`).
+Chaque Glouton repoussé rapporte aussi `score × numéro de vague` (voir `enemies`).
 
 ## `waves`
 
@@ -43,49 +43,55 @@ Chaque ennemi tué rapporte aussi `score × numéro de vague` (voir `enemies`).
 |---|---|
 | `total` | Nombre de vagues pour gagner (30). |
 | `prepSeconds` | Préparation avant la vague 1 (10 s). |
-| `interWaveSeconds` | Compte à rebours avant la vague suivante, lancé quand le dernier ennemi d'une vague est apparu. Le bouton « Vague suivante » l'écourte. |
-| `hpGrowth` | PV d'un ennemi = PV de base × `hpGrowth`^(vague − 1) (1,12). |
-| `countBase`, `countPerWave` | Nombre d'ennemis = `countBase + countPerWave × (vague − 1)`, arrondi. |
+| `interWaveSeconds` | Compte à rebours avant la vague suivante, lancé quand le dernier Glouton d'une vague est apparu. Le bouton « Vague suivante » l'écourte. |
+| `hpGrowth` | PV d'un Glouton = PV de base × `hpGrowth`^(vague − 1) (1,12). |
+| `countBase`, `countPerWave` | Nombre de Gloutons = `countBase + countPerWave × (vague − 1)`, arrondi. |
 | `spawnIntervalStart`, `spawnIntervalPerWave`, `spawnIntervalMin` | Secondes entre deux apparitions : `start + perWave × (vague − 1)`, jamais sous `min`. |
-| `laneOffsetMax` | Décalage latéral aléatoire maximal des ennemis par rapport à l'axe de la rue (visuel). |
-| `composition` | Types d'ennemis : `enemy` (identifiant), `fromWave` (première vague où il apparaît), `weight` (poids dans la répartition). |
+| `laneOffsetMax` | Décalage latéral aléatoire maximal des Gloutons par rapport à l'axe de la rue (visuel). |
+| `composition` | Types de Gloutons : `enemy` (identifiant), `fromWave` (première vague où il apparaît), `weight` (poids dans la répartition). |
 
-## `enemies`
+## `enemies` (les Gloutons)
 
 | Champ | Rôle |
 |---|---|
-| `id` | Identifiant (`pieton`, `cycliste`, `voiture`). Le nom affiché est dans `src/i18n/fr.json` (`enemy.<id>.name`). |
+| `id` | Identifiant (`glouton`, `filou`, `bouboule`). Le nom affiché est dans `src/i18n/fr.json` (`enemy.<id>.name`). |
 | `hp` | PV à la vague 1. |
 | `speed` | Vitesse (m/s). |
-| `reward` | Argent gagné quand il est tué (5 à 40). |
-| `baseDamage` | PV retirés à la base s'il l'atteint. |
-| `score` | Points (× numéro de vague) quand il est tué. |
+| `reward` | Pièces gagnées quand il est repoussé (5 à 40). |
+| `baseDamage` | Parts de gâteau mangées s'il atteint le gâteau. |
+| `score` | Points (× numéro de vague) quand il est repoussé. |
 
-## `towers`
+## `towers` (les tourelles)
 
 | Champ | Rôle |
 |---|---|
-| `id` | Identifiant (`mitrailleuse`, `canon`). Nom affiché : `tower.<id>.name` dans `src/i18n/fr.json`. |
-| `kind` | `hitscan` = tir instantané sur une cible ; `shell` = obus qui explose (dégâts de zone). |
-| `cost` | Prix. |
+| `id` | Identifiant (`bulles`, `ballons`). Nom affiché : `tower.<id>.name` dans `src/i18n/fr.json`. |
+| `cost` | Prix en pièces. |
 | `range` | Portée (m). |
-| `damage` | Dégâts par tir (ou par explosion pour `shell`). |
+| `damage` | Dégâts par projectile (sur la cible, ou sur toute la zone si `splashRadius` > 0). |
 | `fireInterval` | Secondes entre deux tirs. |
-| `splashRadius` | (`shell`) Rayon de l'explosion (m). |
-| `projectileSpeed` | (`shell`) Vitesse de l'obus (m/s). |
+| `projectileSpeed` | Vitesse de la bulle ou du ballon (m/s). |
+| `splashRadius` | Rayon d'éclaboussure (m) ; 0 = une seule cible. |
 
 ## `mapRules`
 
-Règles de validité d'une carte (vérifiées par les tests, et plus tard pour les cartes générées).
+Règles de construction et de validité d'une carte (emplacements de tourelles).
 
 | Champ | Rôle |
 |---|---|
-| `slotMinDistanceFromPath` | Distance minimale entre un emplacement et l'axe d'une rue (m). |
+| `slotMinDistanceFromPath` | Distance minimale entre un socle et l'axe d'une rue (m). |
 | `slotMinSpacing` | Distance minimale entre deux emplacements (m). |
+| `roofMaxDistanceFromPath` | Un toit devient emplacement si le centre du bâtiment est à moins de cette distance du chemin (m). |
+| `padOffsetFromPath` | Distance des socles à l'axe du chemin (m). |
+| `padStep` | Pas entre deux socles candidats le long du chemin (m). |
+| `padCoverageRadius` | Un tronçon du chemin sans emplacement dans ce rayon reçoit un socle (m). |
+| `padClearance` | Écart minimal entre un socle et un bâtiment ou un plan d'eau (m). |
+| `padElevation` | Hauteur d'un socle (m), pour le rendu. |
+| `minSlots`, `maxSlots` | Nombre d'emplacements par carte (25 à 60). |
 | `baseMaxDistanceFromPathEnd` | Écart maximal entre la fin d'un chemin et la base (m). |
 
 ## `debug`
 
 | Champ | Rôle |
 |---|---|
-| `startMoney` | Argent de départ quand l'adresse se termine par `?debug`. |
+| `startMoney` | Pièces au départ quand l'adresse se termine par `?debug`. |

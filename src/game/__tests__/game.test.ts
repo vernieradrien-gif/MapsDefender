@@ -18,24 +18,24 @@ describe('partie : état initial et pose de tours', () => {
     expect(game.phase).toBe('running');
   });
 
-  it('poser une tour débite son coût', () => {
+  it('installer une tourelle débite son coût', () => {
     const game = newGame();
-    expect(game.placeTower(1, 'mitrailleuse')).toBe('ok');
+    expect(game.placeTower(1, 'bulles')).toBe('ok');
     expect(game.money).toBe(150);
-    expect(game.towerAt(1)?.config.id).toBe('mitrailleuse');
-    expect(game.placeTower(2, 'canon')).toBe('ok');
+    expect(game.towerAt(1)?.config.id).toBe('bulles');
+    expect(game.placeTower(2, 'ballons')).toBe('ok');
     expect(game.money).toBe(50);
     expect(eventsOf(game.drainEvents(), 'towerPlaced')).toHaveLength(2);
   });
 
   it('refuse les poses impossibles sans débiter', () => {
     const game = newGame(straightMap(), testConfig((c) => (c.economy.startMoney = 80)));
-    expect(game.placeTower(99, 'mitrailleuse')).toBe('invalid-slot');
+    expect(game.placeTower(99, 'bulles')).toBe('invalid-slot');
     expect(game.placeTower(1, 'laser')).toBe('unknown-tower');
-    expect(game.placeTower(1, 'canon')).toBe('insufficient-funds');
+    expect(game.placeTower(1, 'ballons')).toBe('insufficient-funds');
     expect(game.money).toBe(80);
-    expect(game.placeTower(1, 'mitrailleuse')).toBe('ok');
-    expect(game.placeTower(1, 'mitrailleuse')).toBe('occupied');
+    expect(game.placeTower(1, 'bulles')).toBe('ok');
+    expect(game.placeTower(1, 'bulles')).toBe('occupied');
     expect(game.money).toBe(30);
   });
 
@@ -61,7 +61,7 @@ describe('partie : vagues', () => {
     expect(game.wavesLaunched).toBe(1);
     expect(game.canCallNextWave()).toBe(false);
     expect(game.callNextWave()).toBe(false);
-    // Les 6 piétons de la vague 1 apparaissent toutes les 0,9 s.
+    // Les 6 Gloutons de la vague 1 apparaissent toutes les 0,9 s.
     run(game, config.waves.spawnIntervalStart * (config.waves.countBase - 1) + 0.1);
     expect(game.canCallNextWave()).toBe(true);
     expect(game.nextWaveCountdown).toBeCloseTo(config.waves.interWaveSeconds - 0.1, 1);
@@ -69,10 +69,10 @@ describe('partie : vagues', () => {
     expect(game.wavesLaunched).toBe(2);
   });
 
-  it('les ennemis qui atteignent la base lui retirent des PV', () => {
+  it('les Gloutons qui atteignent le gâteau en mangent des parts', () => {
     const game = newGame();
     game.callNextWave();
-    // Dernier piéton apparu à 4,5 s, arrivé vers 7,9 s ; la vague 2 part à 10,5 s.
+    // Dernier Glouton apparu à 4,5 s, arrivé vers 7,9 s ; la vague 2 part à 10,5 s.
     run(game, 9);
     expect(game.baseHp).toBe(20 - 6);
     expect(game.kills).toBe(0);
@@ -81,14 +81,14 @@ describe('partie : vagues', () => {
     expect(game.money).toBe(200 + 12);
   });
 
-  it('tuer rapporte de l’argent, puis le bonus de fin de vague est versé', () => {
+  it('repousser un Glouton rapporte de l’argent, puis le bonus de fin de vague est versé', () => {
     const game = newGame();
-    game.placeTower(1, 'mitrailleuse');
+    game.placeTower(1, 'bulles');
     game.callNextWave();
     run(game, 9);
     expect(game.kills).toBe(6);
     expect(game.baseHp).toBe(20);
-    const reward = game.config.enemies.find((e) => e.id === 'pieton')!.reward;
+    const reward = game.config.enemies.find((e) => e.id === 'glouton')!.reward;
     expect(game.money).toBe(200 - 50 + 6 * reward + 12);
     expect(game.score).toBeGreaterThan(0);
   });
@@ -106,19 +106,19 @@ describe('partie : vagues', () => {
     ]);
   });
 
-  it('le canon touche plusieurs ennemis groupés', () => {
+  it('le lance-ballons éclabousse plusieurs Gloutons groupés', () => {
     const config = testConfig((c) => {
       c.waves.spawnIntervalStart = 0.02;
       c.waves.spawnIntervalMin = 0.02;
       c.waves.laneOffsetMax = 0;
     });
     const game = newGame(straightMap(), config);
-    game.placeTower(1, 'canon');
+    game.placeTower(1, 'ballons');
     game.callNextWave();
     let killsAtFirstExplosion = -1;
     for (let i = 0; i < 600 && killsAtFirstExplosion < 0; i++) {
       game.step(1 / 60);
-      if (eventsOf(game.drainEvents(), 'explosion').length > 0) killsAtFirstExplosion = game.kills;
+      if (eventsOf(game.drainEvents(), 'impact').length > 0) killsAtFirstExplosion = game.kills;
     }
     expect(killsAtFirstExplosion).toBeGreaterThan(1);
   });
@@ -135,7 +135,7 @@ describe('partie : vagues', () => {
 });
 
 describe('partie : fin', () => {
-  it('défaite quand la base tombe à 0 PV, puis la simulation s’arrête', () => {
+  it('défaite quand le gâteau est mangé, puis la simulation s’arrête', () => {
     const game = newGame(straightMap(), testConfig((c) => (c.base.hp = 3)));
     game.callNextWave();
     run(game, 30);
@@ -147,15 +147,15 @@ describe('partie : fin', () => {
     const time = game.time;
     game.step(1 / 60);
     expect(game.time).toBe(time);
-    expect(game.placeTower(1, 'mitrailleuse')).toBe('game-over');
+    expect(game.placeTower(1, 'bulles')).toBe('game-over');
     expect(game.callNextWave()).toBe(false);
   });
 
-  it('victoire après la dernière vague, avec bonus de PV restants', () => {
+  it('victoire après la dernière vague, avec bonus de parts restantes', () => {
     const config = testConfig((c) => (c.waves.total = 3));
     const game = newGame(straightMap(), config, { startMoney: 1000 });
-    game.placeTower(1, 'mitrailleuse');
-    game.placeTower(2, 'canon');
+    game.placeTower(1, 'bulles');
+    game.placeTower(2, 'ballons');
     run(game, 300);
     expect(game.phase).toBe('victory');
     expect(game.wavesCleared).toBe(3);
@@ -165,15 +165,15 @@ describe('partie : fin', () => {
     expect(game.score).toBeGreaterThanOrEqual(20 * config.score.perBaseHpOnVictory);
   });
 
-  it('sans aucune tour, la partie sur la carte fixe se termine par une défaite', () => {
-    const game = new Game(createFixedMap(), testConfig());
+  it('sans aucune tourelle, la partie sur la carte fixe se termine par une défaite', () => {
+    const game = new Game(createFixedMap(testConfig().mapRules), testConfig());
     playToEnd(game, () => {});
     expect(game.phase).toBe('defeat');
   });
 
   it('une partie complète sur la carte fixe va jusqu’au bout sans état invalide', () => {
-    const game = new Game(createFixedMap(), testConfig());
-    const stats = playToEnd(game, createGreedyBot(game, ['mitrailleuse', 'mitrailleuse', 'canon']));
+    const game = new Game(createFixedMap(testConfig().mapRules), testConfig());
+    const stats = playToEnd(game, createGreedyBot(game, ['bulles', 'bulles', 'ballons']));
     expect(game.isOver).toBe(true);
     expect(stats.minMoney).toBeGreaterThanOrEqual(0);
     expect(stats.maxEnemies).toBeLessThanOrEqual(150);
@@ -182,16 +182,16 @@ describe('partie : fin', () => {
 
   it('avec beaucoup d’argent (mode debug), la victoire est atteignable', () => {
     const config = testConfig();
-    const game = new Game(createFixedMap(), config, { startMoney: config.debug.startMoney });
-    playToEnd(game, createGreedyBot(game, ['canon', 'mitrailleuse']));
+    const game = new Game(createFixedMap(testConfig().mapRules), config, { startMoney: config.debug.startMoney });
+    playToEnd(game, createGreedyBot(game, ['ballons', 'bulles']));
     expect(game.phase).toBe('victory');
     expect(game.wavesCleared).toBe(30);
   });
 
   it('même carte et mêmes actions = même partie (déterminisme)', () => {
     const play = () => {
-      const game = new Game(createFixedMap(), testConfig());
-      playToEnd(game, createGreedyBot(game, ['mitrailleuse', 'canon']));
+      const game = new Game(createFixedMap(testConfig().mapRules), testConfig());
+      playToEnd(game, createGreedyBot(game, ['bulles', 'ballons']));
       return [game.phase, game.score, game.money, game.kills, game.time, game.wavesLaunched];
     };
     expect(play()).toEqual(play());

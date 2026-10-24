@@ -11,10 +11,12 @@ export interface RadialOption {
 }
 
 /** Rayon du cercle sur lequel sont disposés les boutons (px). */
-const RADIUS = 66;
-/** Demi-taille d'un bouton avec son étiquette (px). */
-const BUTTON_HALF = 34;
-const SPREAD = (62 * Math.PI) / 180;
+const RADIUS = 74;
+/** Encombrement d'un bouton autour de son centre (px), étiquette comprise. */
+const HALF_WIDTH = 52;
+const ABOVE = 36;
+const BELOW = 66;
+const SPREAD = (95 * Math.PI) / 180;
 
 /**
  * Positions des boutons autour du point touché : on essaie d'abord au-dessus,
@@ -29,18 +31,18 @@ export function radialPositions(center: Vec2, count: number, view: ViewRect): Ve
       return { x: center.x + Math.cos(a) * RADIUS, y: center.y + Math.sin(a) * RADIUS };
     });
   const fits = (p: Vec2) =>
-    p.x - BUTTON_HALF >= view.x &&
-    p.x + BUTTON_HALF <= view.x + view.width &&
-    p.y - BUTTON_HALF >= view.y &&
-    p.y + BUTTON_HALF <= view.y + view.height;
+    p.x - HALF_WIDTH >= view.x &&
+    p.x + HALF_WIDTH <= view.x + view.width &&
+    p.y - ABOVE >= view.y &&
+    p.y + BELOW <= view.y + view.height;
   for (const direction of directions) {
     const positions = layout(direction);
     if (positions.every(fits)) return positions;
   }
   // Rien ne tient (écran minuscule) : au-dessus, ramené dans la zone visible.
   return layout(directions[0]!).map((p) => ({
-    x: Math.min(Math.max(p.x, view.x + BUTTON_HALF), view.x + view.width - BUTTON_HALF),
-    y: Math.min(Math.max(p.y, view.y + BUTTON_HALF), view.y + view.height - BUTTON_HALF),
+    x: Math.min(Math.max(p.x, view.x + HALF_WIDTH), view.x + view.width - HALF_WIDTH),
+    y: Math.min(Math.max(p.y, view.y + ABOVE), view.y + view.height - BELOW),
   }));
 }
 

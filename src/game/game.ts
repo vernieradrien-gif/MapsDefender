@@ -1,4 +1,4 @@
-import type { EnemyConfig, GameConfig, ShellTowerConfig, TowerConfig } from '../config';
+import type { EnemyConfig, GameConfig, TowerConfig } from '../config';
 import { canAfford, killScore, victoryScore, waveBonus, waveClearScore } from './economy';
 import type { GameEvent } from './events';
 import { PreparedPath, type PathSample } from './path';
@@ -48,7 +48,7 @@ export interface Tower {
   y: number;
   /** Secondes avant le prochain tir possible. */
   cooldown: number;
-  /** Orientation du canon (radians). */
+  /** Orientation de la tourelle (radians). */
   angle: number;
   targetId: number | null;
 }
@@ -56,6 +56,8 @@ export interface Tower {
 export interface Projectile {
   id: number;
   towerId: number;
+  /** Identifiant du type de tourelle (pour le rendu : bulle, ballon…). */
+  towerType: string;
   x: number;
   y: number;
   prevX: number;
@@ -66,6 +68,8 @@ export interface Projectile {
   speed: number;
   damage: number;
   splashRadius: number;
+  /** Distance déjà parcourue (m), pour l'animation en cloche. */
+  traveled: number;
   alive: boolean;
 }
 
@@ -394,23 +398,15 @@ export class Game {
       type: 'shot',
       towerId: tower.id,
       towerType: config.id,
-      kind: config.kind,
       fromX: tower.x,
       fromY: tower.y,
       toX: target.x,
       toY: target.y,
     });
-    if (config.kind === 'hitscan') {
-      this.damageEnemy(target, config.damage);
-    } else {
-      this.launchShell(tower, config, target);
-    }
-  }
-
-  private launchShell(tower: Tower, config: ShellTowerConfig, target: Enemy): void {
     this.projectiles.push({
       id: this.nextId++,
       towerId: tower.id,
+      towerType: config.id,
       x: tower.x,
       y: tower.y,
       prevX: tower.x,
@@ -421,6 +417,7 @@ export class Game {
       speed: config.projectileSpeed,
       damage: config.damage,
       splashRadius: config.splashRadius,
+      traveled: 0,
       alive: true,
     });
   }
@@ -443,19 +440,26 @@ export class Game {
       if (dist <= travel) {
         p.x = p.targetX;
         p.y = p.targetY;
+        p.traveled += dist;
         p.alive = false;
-        this.explode(p);
+        this.impact(p, target);
       } else {
         p.x += (dx / dist) * travel;
         p.y += (dy / dist) * travel;
+        p.traveled += travel;
       }
     }
   }
 
-  private explode(p: Projectile): void {
-    this.events.push({ type: 'explosion', x: p.x, y: p.y, radius: p.splashRadius });
-    for (const enemy of candidatesInRadius(p.x, p.y, p.splashRadius, this.enemies)) {
-      this.damageEnemy(enemy, p.damage);
+  /** Arrivée d'un projectile : une cible (bulle) ou toute une zone (ballon d'eau). */
+  private impact(p: Projectile, target: Enemy | undefined): void {
+    this.events.push({ type: 'impact', towerType: p.towerType, x: p.x, y: p.y, radius: p.splashRadius });
+    if (p.splashRadius > 0) {
+      for (const enemy of candidatesInRadius(p.x, p.y, p.splashRadius, this.enemies)) {
+        this.damageEnemy(enemy, p.damage);
+      }
+    } else if (target && target.alive) {
+      this.damageEnemy(target, p.damage);
     }
   }
 
@@ -469,7 +473,7 @@ export class Game {
     this._kills++;
     this._score += killScore(enemy.config, enemy.wave);
     this.events.push({
-      type: 'enemyKilled',
+      type: 'enemyDefeated',
       enemyId: enemy.id,
       enemyType: enemy.config.id,
       x: enemy.x,

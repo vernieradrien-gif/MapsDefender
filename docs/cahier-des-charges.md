@@ -27,6 +27,8 @@ Tower defense mobile Android où le joueur saisit une adresse (ou utilise sa pos
 - **Cible** : Android (Capacitor) + version web PWA. Français d'abord, textes externalisés (i18n).
 - **Sessions** de 3 à 8 minutes, une main, portrait.
 - **Chaque lieu = carte unique et rejouable** (même adresse = même carte, graine déterministe).
+- **Ton bon enfant** : univers coloré, drôle et non violent. Ni armes réalistes ni ennemis humains ou véhicules : des tourelles rigolotes (bulles, ballons d'eau, tartes…) repoussent des **Gloutons**, petites créatures gourmandes qui veulent manger le gâteau du quartier.
+- **Style visuel** : ville miniature vue de dessus en pseudo-3D (rues, maisons, parcs, arbres), belle et moderne.
 - **Revenu** : pubs récompensées et interstitiels entre deux parties.
 - **Hors v1** : multijoueur, classement en ligne, comptes, achats intégrés, tuiles de carte.
 
@@ -63,36 +65,38 @@ Tower defense mobile Android où le joueur saisit une adresse (ou utilise sa pos
 
 ## 3. Gameplay
 
-Les ennemis partent d'une ou plusieurs entrées et suivent les rues jusqu'à la base ; le joueur pose des tours sur des emplacements le long des rues.
+Les Gloutons partent d'une ou plusieurs entrées et suivent les rues jusqu'à la base : **le gâteau du quartier**. Le joueur installe des tourelles **sur les toits des maisons** proches des rues ou, à défaut, sur des **socles** posés au sol.
 
-**Boucle** : préparation 10 s, vagues successives, argent gagné en tuant, base à 20 PV, victoire après 30 vagues, score dans tous les cas.
+**Boucle** : préparation 10 s, vagues successives, argent gagné pour chaque Glouton repoussé, base à 20 PV (le gâteau compte 20 parts), victoire après 30 vagues, score dans tous les cas.
 
-### Tours (4)
+Un Glouton vaincu n'est pas « tué » : rassasié, il disparaît dans un nuage de confettis.
 
-| Tour | Coût | Caractéristiques |
-|---|---|---|
-| Mitrailleuse | 50 | cadence rapide, faible dégât |
-| Canon | 100 | zone, lent |
-| Sniper | 150 | longue portée, dégâts élevés, très lent |
-| Ralentisseur | 75 | −40 % de vitesse dans sa zone |
+### Tourelles (4)
+
+| Tourelle | Rôle (ancien nom) | Coût | Caractéristiques |
+|---|---|---|---|
+| Lance-bulles | (Mitrailleuse) | 50 | cadence rapide, faible dégât |
+| Lance-ballons | (Canon) | 100 | ballons d'eau, éclaboussure de zone, lent |
+| Lance-tartes | (Sniper) | 150 | longue portée, dégâts élevés, très lent |
+| Barbe à papa | (Ralentisseur) | 75 | nuage collant : −40 % de vitesse dans sa zone |
 
 - 3 niveaux d'amélioration par tour (coût ×1,6 par niveau).
 - Revente à 70 %.
 
-### Ennemis (5)
+### Ennemis : les Gloutons (5)
 
-| Ennemi | PV | Caractéristiques |
-|---|---|---|
-| Piéton | 20 | vitesse moyenne |
-| Cycliste | 12 | rapide |
-| Voiture | 60 | — |
-| Camion | 200 | lent, gros dégâts à la base |
-| Convoi (boss, toutes les 10 vagues) | 800 | se scinde en 3 voitures à la mort |
+| Glouton | Rôle (ancien nom) | PV | Caractéristiques |
+|---|---|---|---|
+| Glouton | (Piéton) | 20 | vitesse moyenne |
+| Filou | (Cycliste) | 12 | rapide |
+| Bouboule | (Voiture) | 60 | — |
+| Mastodonte | (Camion) | 200 | lent, grosses bouchées (gros dégâts à la base) |
+| Roi Glouton (boss, toutes les 10 vagues) | (Convoi) | 800 | se scinde en 3 Bouboules quand il est vaincu |
 
 ### Économie
 
 - Argent de départ : 200.
-- Gain par ennemi tué : 5 à 40.
+- Gain par ennemi vaincu : 5 à 40.
 - Bonus de fin de vague : 10 + 2 × numéro de vague.
 - Monnaie permanente (**gemmes**) gagnée selon le score, dépensée dans un petit arbre d'améliorations permanentes (+5 % dégâts, +1 emplacement initial, argent de départ…).
 
@@ -104,15 +108,18 @@ Les ennemis partent d'une ou plusieurs entrées et suivent les rues jusqu'à la 
 ## 4. Génération de carte (jalon 4)
 
 1. **Géocodage** Nominatim (ou position GPS avec consentement).
-2. **Requête Overpass** des voies `highway=*` dans un rayon de 400 m (300 à 500).
-   - Types retenus : `residential`, `tertiary`, `secondary`, `primary`, `unclassified`, `living_street`.
-   - Exclus : autoroutes, chemins piétons, escaliers, voies de service.
+2. **Requête Overpass** dans un rayon de 400 m (300 à 500), en une seule requête :
+   - voies `highway=*` — types retenus : `residential`, `tertiary`, `secondary`, `primary`, `unclassified`, `living_street` ; exclus : autoroutes, chemins piétons, escaliers, voies de service ;
+   - bâtiments `building=*` (emplacements sur les toits et décor) ;
+   - espaces verts et eau pour le décor : `leisure=park`, `leisure=garden`, `landuse=grass`, `landuse=forest`, `natural=wood`, `natural=water`.
 3. **Projection** équirectangulaire locale en mètres, mise à l'échelle écran.
 4. **Graphe** : nœuds partagés = carrefours, arêtes pondérées par la longueur.
 5. **Simplification** : impasses < 30 m supprimées, fusion des nœuds à moins de 8 m, Douglas-Peucker tolérance 3 m, plus grande composante connexe seulement.
 6. **Base** = nœud le plus proche du centre ; **entrées** = nœuds de bord éloignés d'au moins 60 % du rayon et espacés d'au moins 90° autour de la base, 1 à 3 entrées.
 7. **Dijkstra** entrée → base, chemin d'au moins 600 m (sinon retirer des entrées proches ou agrandir le rayon jusqu'à 600 m).
-8. **Emplacements de tours** de chaque côté du chemin à 12 m de l'axe, espacés de 25 m, sans chevaucher une autre rue, à moins de 40 m du chemin, 25 à 60 par carte.
+8. **Emplacements de tourelles**, 25 à 60 par carte :
+   - en priorité **sur les toits** : un emplacement par bâtiment dont le centre est à moins de 40 m du chemin, emplacements espacés d'au moins 25 m ;
+   - si la carte n'a pas assez de bâtiments : **socles** posés au sol de chaque côté du chemin à 12 m de l'axe, espacés de 25 m, sans chevaucher une rue ni un bâtiment.
 
 ### Déterminisme et cache
 
@@ -131,7 +138,9 @@ Les ennemis partent d'une ou plusieurs entrées et suivent les rues jusqu'à la 
 
 ### Rendu
 
-- Rues en vectoriel (trait arrondi, largeur selon le type de voie), néon ou minimaliste sur fond sombre, sans tuiles.
+- Ville miniature vue de dessus en **pseudo-3D** : bâtiments extrudés (murs, toits, ombres portées), arbres, parcs, eau.
+- Rues en vectoriel (trait arrondi, largeur selon le type de voie, trottoirs), le chemin des Gloutons repérable d'un coup d'œil.
+- Style coloré, doux et moderne, sans tuiles.
 - Mention **« © OpenStreetMap contributors »** dans À propos et sur l'écran de choix de carte (licence ODbL).
 
 ## 5. Écrans
@@ -141,7 +150,7 @@ Portrait, zones tactiles d'au moins 48 dp.
 - **Accueil** : Jouer, cartes récentes, gemmes, Améliorations, Paramètres.
 - **Choix du lieu** : champ adresse, bouton Ma position, cartes en cache, aperçu du tracé, rayon.
 - **Chargement** : étapes animées, Annuler.
-- **Partie** : carte plein écran, barre haute (argent / PV base / vague), barre basse (tours), Vague suivante, vitesse ×1/×2/×3, pause.
+- **Partie** : carte plein écran, barre haute (argent / parts de gâteau / vague), barre basse (Vague suivante, vitesse ×1/×2/×3), pause ; construction par menu radial.
 - **Fin de partie** : score, vague, gemmes, bouton Doubler (pub), Rejouer, Partager.
 - **Améliorations**.
 
@@ -201,3 +210,11 @@ Portrait, zones tactiles d'au moins 48 dp.
 - Consentement RGPD au premier lancement dans l'Espace économique européen.
 - 60 images/s avec 150 ennemis.
 - Progression conservée après mise à jour.
+
+## Historique des révisions
+
+- **Révision 1 (24/10/2026)**, demandée après le jalon 1 :
+  - ton bon enfant : tourelles et ennemis renommés (Lance-bulles, Lance-ballons, Lance-tartes, Barbe à papa ; Glouton, Filou, Bouboule, Mastodonte, Roi Glouton), la base devient un gâteau ; les rôles et les chiffres ne changent pas ;
+  - rendu en ville miniature pseudo-3D (rues, maisons, parcs) au lieu du néon sur fond sombre ;
+  - tourelles sur les toits des bâtiments, socles au sol si la carte manque de bâtiments ;
+  - requête Overpass élargie aux bâtiments, espaces verts et plans d'eau.

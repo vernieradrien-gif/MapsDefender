@@ -9,7 +9,7 @@ export function testConfig(mutate?: (c: GameConfig) => void): GameConfig {
   return config;
 }
 
-/** Carte minimale : une rue droite de 100 m, un emplacement au milieu. */
+/** Carte minimale : une rue droite de 100 m, deux socles. */
 export function straightMap(): GameMap {
   return {
     id: 'test',
@@ -19,10 +19,13 @@ export function straightMap(): GameMap {
     base: { x: 100, y: 0 },
     paths: [{ id: 'p', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }],
     slots: [
-      { id: 1, x: 50, y: 15 },
-      { id: 2, x: 80, y: -15 },
+      { id: 1, x: 50, y: 15, kind: 'pad', elevation: 0.6, buildingId: null },
+      { id: 2, x: 80, y: -15, kind: 'pad', elevation: 0.6, buildingId: null },
     ],
-    streets: [],
+    streets: [{ points: [{ x: 0, y: 0 }, { x: 100, y: 0 }], width: 10 }],
+    buildings: [],
+    areas: [],
+    trees: [],
   };
 }
 

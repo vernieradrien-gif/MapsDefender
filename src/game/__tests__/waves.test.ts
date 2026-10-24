@@ -57,9 +57,9 @@ describe('vagues', () => {
     }
   });
 
-  it('seuls les piétons apparaissent à la vague 1', () => {
+  it('seuls les Gloutons simples apparaissent à la vague 1', () => {
     const composition = waveComposition(1, 10, waves);
-    expect([...composition.keys()]).toEqual(['pieton']);
+    expect([...composition.keys()]).toEqual(['glouton']);
   });
 
   it('répartit selon les poids (plus fort reste)', () => {

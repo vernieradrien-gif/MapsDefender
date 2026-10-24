@@ -1,3 +1,4 @@
+import '@fontsource-variable/fredoka';
 import './ui/style.css';
 import { App } from './app';
 import { t } from './i18n';

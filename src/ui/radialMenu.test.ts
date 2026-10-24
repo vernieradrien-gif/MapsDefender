@@ -3,8 +3,9 @@ import { radialPositions } from './radialMenu';
 
 describe('menu radial', () => {
   const view = { x: 0, y: 60, width: 390, height: 700 };
+  // Bouton + étiquette : 52 px de part et d'autre, 36 px au-dessus, 66 px en dessous.
   const inside = (p: { x: number; y: number }) =>
-    p.x - 34 >= view.x && p.x + 34 <= view.x + view.width && p.y - 34 >= view.y && p.y + 34 <= view.y + view.height;
+    p.x - 52 >= view.x && p.x + 52 <= view.x + view.width && p.y - 36 >= view.y && p.y + 66 <= view.y + view.height;
 
   it('place les boutons au-dessus quand il y a la place', () => {
     const positions = radialPositions({ x: 200, y: 400 }, 2, view);
@@ -18,6 +19,11 @@ describe('menu radial', () => {
       expect(p.y).toBeGreaterThan(80);
       expect(inside(p)).toBe(true);
     }
+  });
+
+  it('écarte assez les boutons pour que les étiquettes ne se chevauchent pas', () => {
+    const [a, b] = radialPositions({ x: 200, y: 400 }, 2, view);
+    expect(Math.hypot(a!.x - b!.x, a!.y - b!.y)).toBeGreaterThanOrEqual(100);
   });
 
   it('reste dans l’écran près d’un coin', () => {

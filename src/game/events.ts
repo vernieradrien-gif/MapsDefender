@@ -10,13 +10,12 @@ export type GameEvent =
       type: 'shot';
       towerId: number;
       towerType: string;
-      kind: 'hitscan' | 'shell';
       fromX: number;
       fromY: number;
       toX: number;
       toY: number;
     }
-  | { type: 'explosion'; x: number; y: number; radius: number }
-  | { type: 'enemyKilled'; enemyId: number; enemyType: string; x: number; y: number; reward: number }
+  | { type: 'impact'; towerType: string; x: number; y: number; radius: number }
+  | { type: 'enemyDefeated'; enemyId: number; enemyType: string; x: number; y: number; reward: number }
   | { type: 'baseHit'; damage: number; baseHp: number }
   | { type: 'gameOver'; victory: boolean; score: number };
