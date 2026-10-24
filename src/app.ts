@@ -8,7 +8,6 @@ import { t } from './i18n';
 import type { ViewRect } from './render/camera';
 import { Effects } from './render/effects';
 import { Renderer } from './render/renderer';
-import { theme } from './render/theme';
 import { readJSON, writeJSON } from './storage';
 import { el } from './ui/dom';
 import { Hud } from './ui/hud';
@@ -60,7 +59,7 @@ export class App {
   constructor(root: HTMLElement, options: AppOptions) {
     this.root = root;
     this.config = loadConfig();
-    this.map = createFixedMap();
+    this.map = createFixedMap(this.config.mapRules);
     this.startMoney = options.debug ? this.config.debug.startMoney : undefined;
     this.game = this.createGame();
     this.loop = new FixedStepLoop(this.config.simulation);
@@ -83,7 +82,7 @@ export class App {
         id: tower.id,
         label: t(`tower.${tower.id}.name`),
         cost: tower.cost,
-        iconHtml: towerIcon(tower.id, theme.towers[tower.id]?.color ?? theme.fallback),
+        iconHtml: towerIcon(tower.id),
       })),
       (towerId) => this.buildTower(towerId),
     );
@@ -148,7 +147,7 @@ export class App {
   };
 
   private handleEvents(events: GameEvent[]): void {
-    this.effects.consume(events);
+    this.effects.consume(events, (towerId) => this.towerElevation(towerId), this.game.map.base);
     for (const e of events) {
       if (e.type === 'waveStarted') {
         this.toast.show(t('toast.waveStarted', { wave: e.wave }));
@@ -158,6 +157,13 @@ export class App {
         this.onGameOver();
       }
     }
+  }
+
+  /** Hauteur (m) du support d'une tourelle, pour que ses effets partent du toit. */
+  private towerElevation(towerId: number): number {
+    const tower = this.game.towers.find((t) => t.id === towerId);
+    const slot = tower && this.game.map.slots.find((s) => s.id === tower.slotId);
+    return slot?.elevation ?? 0;
   }
 
   // --- États de l'application ----------------------------------------------
@@ -226,8 +232,9 @@ export class App {
 
   private onCanvasTap(x: number, y: number): void {
     if (this.state !== 'playing') return;
-    const camera = this.renderer.camera;
-    const slot = findSlotAt(this.game.map.slots, x, y, camera, this.renderer.slotTouchRadius);
+    const slot = findSlotAt(this.game.map.slots, x, y, this.renderer.slotTouchRadius, (s) =>
+      this.renderer.slotScreen(s),
+    );
     if (!slot) {
       this.radial.close();
       this.selectedTowerId = null;
@@ -247,7 +254,7 @@ export class App {
       return;
     }
     this.selectedTowerId = null;
-    this.radial.open(slot.id, { x: camera.sx(slot.x), y: camera.sy(slot.y) }, this.view, this.game.money);
+    this.radial.open(slot.id, this.renderer.slotScreen(slot), this.view, this.game.money);
   }
 
   private buildTower(towerId: string): void {

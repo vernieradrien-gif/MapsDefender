@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import { el, escapeHtml } from './dom';
+import { icons, mascots, towerIcon } from './icons';
 
 /** Écran superposé (accueil, pause, fin de partie). */
 class Overlay {
@@ -39,10 +40,18 @@ export class StartScreen extends Overlay {
 
   constructor(parent: HTMLElement, onPlay: () => void) {
     super(parent, 'overlay-start');
+    const step = (icon: string, key: string) =>
+      `<li><span class="step-icon">${icon}</span><span>${escapeHtml(t(key))}</span></li>`;
     this.panel.append(
+      el('div', 'mascots', mascots.map((m, i) => `<span class="mascot mascot-${i}">${m}</span>`).join('')),
       el('h1', 'title', escapeHtml(t('app.title'))),
       el('p', 'tagline', escapeHtml(t('app.tagline'))),
-      el('p', 'hint', escapeHtml(t('start.hint'))),
+      el(
+        'ul',
+        'steps',
+        step(icons.marker, 'start.step1') + step(icons.arrow, 'start.step2') + step(icons.cake, 'start.step3'),
+      ),
+      el('div', 'start-towers', towerIcon('bulles') + towerIcon('ballons')),
     );
     this.debugNote = el('p', 'debug-note hidden');
     this.panel.append(this.debugNote, this.button(t('start.play'), 'button-primary button-large', onPlay));
@@ -92,6 +101,7 @@ export class EndScreen extends Overlay {
     this.root.classList.toggle('victory', r.victory);
     this.root.classList.toggle('defeat', !r.victory);
     this.content.innerHTML =
+      `<div class="mascots">${r.victory ? icons.cake.replace('<svg', '<svg class="end-cake"') : mascots.join('')}</div>` +
       `<h2 class="title">${escapeHtml(t(r.victory ? 'end.victory' : 'end.defeat'))}</h2>` +
       `<p class="tagline">${escapeHtml(subtitle)}</p>` +
       `<div class="end-score"><span>${escapeHtml(t('end.score'))}</span><strong>${r.score}</strong></div>` +

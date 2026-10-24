@@ -1,18 +1,21 @@
 import type { TowerSlot } from '../game/types';
-import type { Camera } from '../render/camera';
 
-/** Emplacement le plus proche du point touché, dans un rayon en pixels écran. */
+/**
+ * Emplacement le plus proche du point touché, dans un rayon en pixels écran.
+ * `screenOf` donne la position affichée de chaque emplacement (sur son toit).
+ */
 export function findSlotAt(
   slots: readonly TowerSlot[],
   screenX: number,
   screenY: number,
-  camera: Camera,
   radiusPx: number,
+  screenOf: (slot: TowerSlot) => { x: number; y: number },
 ): TowerSlot | null {
   let best: TowerSlot | null = null;
   let bestDist = radiusPx;
   for (const slot of slots) {
-    const d = Math.hypot(camera.sx(slot.x) - screenX, camera.sy(slot.y) - screenY);
+    const p = screenOf(slot);
+    const d = Math.hypot(p.x - screenX, p.y - screenY);
     if (d <= bestDist) {
       best = slot;
       bestDist = d;
