@@ -65,34 +65,41 @@ export interface EnemyConfig {
   score: number;
 }
 
-interface TowerConfigBase {
+/** Tourelle : tire des projectiles à tête chercheuse sur l'ennemi le plus avancé. */
+export interface TowerConfig {
   id: string;
   cost: number;
   /** Portée en mètres. */
   range: number;
+  /** Dégâts par projectile (sur la cible, ou sur toute la zone si splashRadius > 0). */
   damage: number;
   /** Secondes entre deux tirs. */
   fireInterval: number;
-}
-
-/** Tir instantané sur une cible (Mitrailleuse). */
-export interface HitscanTowerConfig extends TowerConfigBase {
-  kind: 'hitscan';
-}
-
-/** Obus qui explose et touche tous les ennemis dans un rayon (Canon). */
-export interface ShellTowerConfig extends TowerConfigBase {
-  kind: 'shell';
-  splashRadius: number;
-  /** Vitesse de l'obus en m/s. */
+  /** Vitesse du projectile (m/s). */
   projectileSpeed: number;
+  /** Rayon d'éclaboussure (m) ; 0 = une seule cible. */
+  splashRadius: number;
 }
-
-export type TowerConfig = HitscanTowerConfig | ShellTowerConfig;
 
 export interface MapRulesConfig {
+  /** Distance minimale entre un emplacement au sol (socle) et l'axe d'une rue (m). */
   slotMinDistanceFromPath: number;
+  /** Distance minimale entre deux emplacements (m). */
   slotMinSpacing: number;
+  /** Un toit devient emplacement si le centre du bâtiment est à moins de cette distance du chemin (m). */
+  roofMaxDistanceFromPath: number;
+  /** Distance des socles à l'axe du chemin (m). */
+  padOffsetFromPath: number;
+  /** Pas entre deux socles candidats le long du chemin (m). */
+  padStep: number;
+  /** Un tronçon de chemin sans emplacement dans ce rayon reçoit un socle (m). */
+  padCoverageRadius: number;
+  /** Écart minimal entre un socle et un bâtiment ou un plan d'eau (m). */
+  padClearance: number;
+  /** Hauteur d'un socle (m), pour le rendu. */
+  padElevation: number;
+  minSlots: number;
+  maxSlots: number;
   baseMaxDistanceFromPathEnd: number;
 }
 
@@ -170,13 +177,15 @@ export function validateConfig(config: GameConfig): string[] {
     positive(t.range, `towers.${t.id}.range`);
     positive(t.damage, `towers.${t.id}.damage`);
     positive(t.fireInterval, `towers.${t.id}.fireInterval`);
-    if (t.kind === 'shell') {
-      positive(t.splashRadius, `towers.${t.id}.splashRadius`);
-      positive(t.projectileSpeed, `towers.${t.id}.projectileSpeed`);
-    } else if (t.kind !== 'hitscan') {
-      errors.push(`towers.${(t as TowerConfigBase).id}.kind inconnu`);
-    }
+    positive(t.projectileSpeed, `towers.${t.id}.projectileSpeed`);
+    nonNegative(t.splashRadius, `towers.${t.id}.splashRadius`);
   }
+
+  const r = config.mapRules;
+  positive(r.slotMinSpacing, 'mapRules.slotMinSpacing');
+  positive(r.padStep, 'mapRules.padStep');
+  positive(r.minSlots, 'mapRules.minSlots');
+  if (r.maxSlots < r.minSlots) errors.push('mapRules.maxSlots doit être >= minSlots');
   return errors;
 }
 

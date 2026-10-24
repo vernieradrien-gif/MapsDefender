@@ -17,10 +17,10 @@ describe('économie', () => {
     expect(canAfford(99, 100)).toBe(false);
   });
 
-  it('le score des éliminations augmente avec la vague', () => {
-    const pieton = config.enemies.find((e) => e.id === 'pieton')!;
-    expect(killScore(pieton, 1)).toBe(pieton.score);
-    expect(killScore(pieton, 5)).toBe(pieton.score * 5);
+  it('le score des Gloutons repoussés augmente avec la vague', () => {
+    const glouton = config.enemies.find((e) => e.id === 'glouton')!;
+    expect(killScore(glouton, 1)).toBe(glouton.score);
+    expect(killScore(glouton, 5)).toBe(glouton.score * 5);
     expect(waveClearScore(3, config.score)).toBe(config.score.perWaveCleared * 3);
   });
 
