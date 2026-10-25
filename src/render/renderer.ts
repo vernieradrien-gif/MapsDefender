@@ -1,9 +1,10 @@
 import type { Game, Projectile } from '../game/game';
-import type { GameMap, TowerSlot } from '../game/types';
+import type { GameMap, TowerSlot, Vec2 } from '../game/types';
+import { interiorPoint } from '../geo/geometry';
 import { Camera, type ViewRect } from './camera';
-import { buildingTopHeight, drawCity, liftPx, padTopPx } from './cityLayer';
+import { buildingTopHeight, drawCity, entryScreen, liftPx, padTopPx } from './cityLayer';
 import type { Effects } from './effects';
-import { drawBalloon, drawBubble, drawCake, drawEnemy, drawSlotMarker, drawTower } from './sprites';
+import { drawBaseGauge, drawCapsule, drawDroplet, drawEnemy, drawSlotMarker, drawTower, towerMuzzleHeight } from './sprites';
 import { theme } from './theme';
 
 export interface RenderState {
@@ -11,6 +12,8 @@ export interface RenderState {
   selectedSlotId: number | null;
   /** Tourelle dont la portée est affichée. */
   selectedTowerId: number | null;
+  /** Portée après la prochaine amélioration (cercle en pointillés), si le menu est ouvert. */
+  nextRange: number | null;
   /** Temps réel (s), pour les animations d'interface. */
   realTime: number;
 }
@@ -33,6 +36,8 @@ export class Renderer {
   private view: ViewRect = { x: 0, y: 0, width: 1, height: 1 };
   /** Hauteur à l'écran (px) du haut de chaque support d'emplacement. */
   private slotLift = new Map<number, number>();
+  /** Haut du bâtiment à protéger (monde) et sa hauteur (m), pour la jauge de PV. */
+  private baseTop: { at: Vec2; height: number } = { at: { x: 0, y: 0 }, height: 0 };
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = get2d(canvas);
@@ -54,7 +59,16 @@ export class Renderer {
 
   setMap(map: GameMap): void {
     this.map = map;
+    const building = map.buildings.find((b) => b.id === map.baseBuildingId);
+    this.baseTop = building
+      ? { at: interiorPoint(building.footprint), height: buildingTopHeight(building) }
+      : { at: map.base, height: 0 };
     this.layout();
+  }
+
+  /** Point (monde) et hauteur (m) du bâtiment à protéger. */
+  get baseAnchor(): { x: number; y: number; height: number } {
+    return { x: this.baseTop.at.x, y: this.baseTop.at.y, height: this.baseTop.height };
   }
 
   private layout(): void {
@@ -97,10 +111,10 @@ export class Renderer {
     ctx.drawImage(this.staticLayer, 0, 0);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
+    this.drawEntryPulses(game.map, time);
+    this.drawFields(game);
     effects.drawGround(ctx, cam);
     this.drawSelectedRange(game, state);
-
-    drawCake(ctx, cam.sx(game.map.base.x), cam.sy(game.map.base.y), u, game.baseHp, game.baseMaxHp, effects.cakeShake);
 
     for (const slot of game.map.slots) {
       if (game.towerAt(slot.id)) continue;
@@ -114,12 +128,14 @@ export class Renderer {
     for (const tower of towers) {
       const slot = slotsById.get(tower.slotId);
       const p = slot ? this.slotScreen(slot) : { x: cam.sx(tower.x), y: cam.sy(tower.y) };
-      towerTop.set(tower.id, cam.sy(tower.y) - p.y);
+      towerTop.set(tower.id, cam.sy(tower.y) - p.y + towerMuzzleHeight(tower.config.id) * u);
       drawTower(ctx, p.x, p.y, u, {
         type: tower.config.id,
         angle: tower.angle,
-        readiness: 1 - Math.max(0, tower.cooldown) / tower.config.fireInterval,
+        level: tower.level,
+        readiness: tower.fireInterval > 0 ? 1 - Math.max(0, tower.cooldown) / tower.fireInterval : 1,
         appear: effects.appearProgress(tower.id),
+        active: tower.targetId !== null,
         time: time + tower.id * 0.37,
       });
     }
@@ -128,16 +144,51 @@ export class Renderer {
     for (const e of enemies) {
       drawEnemy(ctx, cam.sx(lerp(e.prevX, e.x, alpha)), cam.sy(lerp(e.prevY, e.y, alpha)), u, {
         type: e.config.id,
-        dirX: e.dirX,
-        dirY: e.dirY,
         phase: e.id * 1.37,
         time,
         hpRatio: e.hp / e.maxHp,
+        slowed: e.slow > 0,
       });
     }
 
     for (const p of game.projectiles) this.drawProjectile(p, alpha, towerTop.get(p.towerId) ?? 0);
     effects.draw(ctx, cam, u);
+
+    const b = this.baseTop;
+    drawBaseGauge(ctx, cam.sx(b.at.x), cam.sy(b.at.y) - liftPx(cam, b.height) - 16 * u, u, game.baseHp, game.baseMaxHp, effects.baseShake);
+  }
+
+  /** Les entrées des virus pulsent pour rester repérables d'un coup d'œil. */
+  private drawEntryPulses(map: GameMap, time: number): void {
+    const ctx = this.ctx;
+    const u = this.unit;
+    for (const e of map.entries) {
+      const k = (time * 0.7) % 1;
+      const { x, y } = entryScreen(this.camera, e, u);
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = theme.entry.pulse;
+      ctx.lineWidth = 3 * u;
+      ctx.beginPath();
+      ctx.arc(x, y, (11 + 12 * k) * u, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Champs actifs des purificateurs. */
+  private drawFields(game: Game): void {
+    const ctx = this.ctx;
+    for (const tower of game.towers) {
+      if (tower.config.attack !== 'field' || tower.targetId === null) continue;
+      const r = tower.range * this.camera.scale;
+      ctx.fillStyle = theme.field.fill;
+      ctx.strokeStyle = theme.field.ring;
+      ctx.lineWidth = 1.5 * this.unit;
+      ctx.beginPath();
+      ctx.arc(this.camera.sx(tower.x), this.camera.sy(tower.y), r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
 
   private drawProjectile(p: Projectile, alpha: number, startLift: number): void {
@@ -148,36 +199,43 @@ export class Renderer {
     const y = cam.sy(lerp(p.prevY, p.y, alpha));
     const remaining = Math.hypot(p.targetX - p.x, p.targetY - p.y);
     const k = p.traveled / Math.max(0.001, p.traveled + remaining);
+    const angle = Math.atan2(p.targetY - p.y, p.targetX - p.x);
     if (p.splashRadius > 0) {
-      // Ballon d'eau lancé en cloche, avec son ombre au sol.
-      const z = startLift * (1 - k) + 4 * 34 * u * k * (1 - k) + 12 * u * (1 - k);
+      // Capsule lancée en cloche, avec son ombre au sol.
+      const z = startLift * (1 - k) + 4 * 34 * u * k * (1 - k) + 6 * u * (1 - k);
       ctx.fillStyle = 'rgba(41, 64, 90, 0.2)';
       ctx.beginPath();
       ctx.ellipse(x, y, 3.5 * u, 2.2 * u, 0, 0, Math.PI * 2);
       ctx.fill();
-      drawBalloon(ctx, x, y - z, u);
+      drawCapsule(ctx, x, y - z, u, angle + k * 6);
     } else {
-      const z = (startLift + 8 * u) * (1 - k) + 6 * u * k;
-      drawBubble(ctx, x, y - z, 3.4 * u);
+      const z = startLift * (1 - k) + 6 * u * k;
+      drawDroplet(ctx, x, y - z, 2.2 * u, angle);
     }
   }
 
   private drawSelectedRange(game: Game, state: RenderState): void {
     if (state.selectedTowerId === null) return;
-    const tower = game.towers.find((t) => t.id === state.selectedTowerId);
+    const tower = game.getTower(state.selectedTowerId);
     if (!tower) return;
     const ctx = this.ctx;
     const x = this.camera.sx(tower.x);
     const y = this.camera.sy(tower.y);
-    const r = tower.config.range * this.camera.scale;
     ctx.fillStyle = theme.range.fill;
     ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.arc(x, y, tower.range * this.camera.scale, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = theme.range.stroke;
     ctx.lineWidth = 2 * this.unit;
     ctx.setLineDash([6 * this.unit, 5 * this.unit]);
     ctx.stroke();
+    if (state.nextRange !== null && state.nextRange > tower.range + 0.5) {
+      ctx.strokeStyle = theme.range.next;
+      ctx.setLineDash([3 * this.unit, 4 * this.unit]);
+      ctx.beginPath();
+      ctx.arc(x, y, state.nextRange * this.camera.scale, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.setLineDash([]);
   }
 }

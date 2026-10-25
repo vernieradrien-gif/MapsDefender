@@ -1,6 +1,6 @@
 import { t } from '../i18n';
 import { el, escapeHtml } from './dom';
-import { icons, mascots, towerIcon } from './icons';
+import { icons, towerIcon, viruses } from './icons';
 
 /** Écran superposé (accueil, pause, fin de partie). */
 class Overlay {
@@ -35,26 +35,52 @@ class Overlay {
   }
 }
 
+export interface StartInfo {
+  /** Nom de la carte jouée. */
+  mapName: string;
+  /** Mention de la source des données (cartes OSM), sinon null. */
+  attribution: string | null;
+  /** La carte réelle était invalide : carte de démonstration à la place. */
+  fallback: boolean;
+  /** Dispositifs proposés : nom, rôle et prix, affichés sous les consignes. */
+  towers: { id: string; name: string; role: string; cost: number }[];
+}
+
 export class StartScreen extends Overlay {
   private readonly debugNote: HTMLElement;
 
-  constructor(parent: HTMLElement, onPlay: () => void) {
+  constructor(parent: HTMLElement, info: StartInfo, onPlay: () => void) {
     super(parent, 'overlay-start');
     const step = (icon: string, key: string) =>
       `<li><span class="step-icon">${icon}</span><span>${escapeHtml(t(key))}</span></li>`;
     this.panel.append(
-      el('div', 'mascots', mascots.map((m, i) => `<span class="mascot mascot-${i}">${m}</span>`).join('')),
+      el('div', 'mascots', viruses.map((m, i) => `<span class="mascot mascot-${i}">${m}</span>`).join('')),
       el('h1', 'title', escapeHtml(t('app.title'))),
       el('p', 'tagline', escapeHtml(t('app.tagline'))),
+      el('p', 'map-name', escapeHtml(t('start.map', { name: info.mapName }))),
+    );
+    if (info.fallback) this.panel.append(el('p', 'fallback-note', escapeHtml(t('start.fallback'))));
+    this.panel.append(
       el(
         'ul',
         'steps',
-        step(icons.marker, 'start.step1') + step(icons.arrow, 'start.step2') + step(icons.cake, 'start.step3'),
+        step(icons.marker, 'start.step1') + step(icons.entry, 'start.step2') + step(icons.base, 'start.step3'),
       ),
-      el('div', 'start-towers', towerIcon('bulles') + towerIcon('ballons')),
+      el(
+        'div',
+        'start-towers',
+        info.towers
+          .map(
+            (tower) =>
+              `<div class="start-tower">${towerIcon(tower.id)}<span><strong>${escapeHtml(tower.name)}</strong>` +
+              `<small>${escapeHtml(tower.role)}</small></span><em>${escapeHtml(t('tower.cost', { cost: tower.cost }))}</em></div>`,
+          )
+          .join(''),
+      ),
     );
     this.debugNote = el('p', 'debug-note hidden');
     this.panel.append(this.debugNote, this.button(t('start.play'), 'button-primary button-large', onPlay));
+    if (info.attribution) this.panel.append(el('p', 'attribution', escapeHtml(t('start.attribution'))));
   }
 
   setDebugMoney(money: number | null): void {
@@ -101,7 +127,7 @@ export class EndScreen extends Overlay {
     this.root.classList.toggle('victory', r.victory);
     this.root.classList.toggle('defeat', !r.victory);
     this.content.innerHTML =
-      `<div class="mascots">${r.victory ? icons.cake.replace('<svg', '<svg class="end-cake"') : mascots.join('')}</div>` +
+      `<div class="mascots">${r.victory ? icons.base.replace('<svg', '<svg class="end-base"') : viruses.join('')}</div>` +
       `<h2 class="title">${escapeHtml(t(r.victory ? 'end.victory' : 'end.defeat'))}</h2>` +
       `<p class="tagline">${escapeHtml(subtitle)}</p>` +
       `<div class="end-score"><span>${escapeHtml(t('end.score'))}</span><strong>${r.score}</strong></div>` +

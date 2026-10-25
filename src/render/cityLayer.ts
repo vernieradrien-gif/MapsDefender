@@ -1,11 +1,12 @@
-import { PreparedPath, distanceToPolyline } from '../game/path';
 import { Rng } from '../game/rng';
-import type { Area, Building, GameMap, Street, Tree, Vec2 } from '../game/types';
+import type { Area, Building, EntryMarker, GameMap, Tree, Vec2 } from '../game/types';
+import { interiorPoint, isConvex, minimumBoundingRect, outwardNormal, polygonArea, signedArea } from '../geo/geometry';
 import type { Camera } from './camera';
 import { pickColor, shade, theme } from './theme';
 
 // Dessin du décor fixe de la ville (une seule fois par redimensionnement) :
-// sol, parcs, eau, rues, marquage du chemin, ombres, bâtiments, arbres, socles.
+// sol, parcs, bois, eau, rues, repères d'entrée, ombres, bâtiments, arbres, socles.
+// Les emprises de bâtiments peuvent être non convexes (données OSM).
 
 export interface CityView {
   ctx: CanvasRenderingContext2D;
@@ -25,14 +26,21 @@ export const liftPx = (cam: Camera, h: number) => h * theme.heightFactor * cam.s
 /** Hauteur à l'écran (px) du dessus d'un socle (exagérée pour rester visible). */
 export const padTopPx = (cam: Camera, elevation: number) => Math.max(2, liftPx(cam, elevation) * 3);
 
+/** Toit à deux pans dessinable : quatre coins formant presque un rectangle. */
+export function hasGableRoof(b: Building): boolean {
+  if (b.roof !== 'gable' || b.footprint.length !== 4) return false;
+  return polygonArea(b.footprint) / minimumBoundingRect(b.footprint).area > 0.85;
+}
+
 export function drawCity(view: CityView, map: GameMap): void {
   const { ctx } = view;
   drawGround(view, map);
   for (const area of map.areas) if (area.kind === 'park') drawPark(view, area, map);
+  for (const area of map.areas) if (area.kind === 'wood') drawWood(view, area);
   for (const area of map.areas) if (area.kind === 'water') drawWater(view, area);
   drawStreets(view, map);
   for (const area of map.areas) if (area.kind === 'plaza') drawPlaza(view, area);
-  drawRoute(view, map);
+  for (const entry of map.entries) drawEntry(view, entry);
   for (const slot of map.slots) if (slot.kind === 'pad') drawPad(view, slot, slot.elevation);
   drawShadows(view, map);
 
@@ -40,7 +48,7 @@ export function drawCity(view: CityView, map: GameMap): void {
   const objects: { depth: number; draw: () => void }[] = [
     ...map.buildings.map((b) => ({
       depth: Math.max(...b.footprint.map((p) => p.y)),
-      draw: () => drawBuilding(view, b),
+      draw: () => drawBuilding(view, b, b.id === map.baseBuildingId),
     })),
     ...map.trees.map((t) => ({ depth: t.y + t.radius * 0.3, draw: () => drawTree(view, t) })),
   ];
@@ -49,7 +57,7 @@ export function drawCity(view: CityView, map: GameMap): void {
   ctx.globalAlpha = 1;
 }
 
-// --- Sol, parcs, eau, place ------------------------------------------------
+// --- Sol, parcs, bois, eau, place -------------------------------------------
 
 function drawGround(view: CityView, map: GameMap): void {
   const { ctx, width, height } = view;
@@ -95,6 +103,8 @@ function bbox(poly: readonly Vec2[]) {
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
 }
 
+const FLOWERS = ['#ff9eb5', '#ffd166', '#ffffff', '#b8a1ff', '#ff8a65'];
+
 function drawPark(view: CityView, park: Area, map: GameMap): void {
   const { ctx, cam } = view;
   polygonPath(view, park.polygon);
@@ -104,22 +114,26 @@ function drawPark(view: CityView, park: Area, map: GameMap): void {
   ctx.strokeStyle = theme.parkEdge;
   ctx.stroke();
 
-  // Allée : un tour de l'étang s'il y en a un, reliée aux bords du parc.
+  // Décor limité au parc.
+  ctx.save();
+  polygonPath(view, park.polygon);
+  ctx.clip();
   const b = bbox(park.polygon);
   const water = map.areas.find((a) => {
     if (a.kind !== 'water') return false;
     const w = bbox(a.polygon);
     return w.minX >= b.minX && w.maxX <= b.maxX && w.minY >= b.minY && w.maxY <= b.maxY;
   });
-  ctx.strokeStyle = theme.parkPath;
-  ctx.lineCap = 'round';
-  ctx.lineWidth = 2.6 * cam.scale;
+  // Allée autour de l'étang, reliée aux bords du parc.
   if (water) {
     const w = bbox(water.polygon);
     const cx = (w.minX + w.maxX) / 2;
     const cy = (w.minY + w.maxY) / 2;
     const rx = (w.maxX - w.minX) / 2 + 5;
     const ry = (w.maxY - w.minY) / 2 + 5;
+    ctx.strokeStyle = theme.parkPath;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 2.6 * cam.scale;
     ctx.beginPath();
     ctx.ellipse(cam.sx(cx), cam.sy(cy), rx * cam.scale, ry * cam.scale, 0, 0, Math.PI * 2);
     ctx.moveTo(cam.sx(b.minX), cam.sy(cy));
@@ -127,38 +141,45 @@ function drawPark(view: CityView, park: Area, map: GameMap): void {
     ctx.moveTo(cam.sx(cx), cam.sy(cy + ry));
     ctx.quadraticCurveTo(cam.sx(cx + 4), cam.sy(b.maxY - 6), cam.sx(cx + 10), cam.sy(b.maxY));
     ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(cam.sx(b.minX), cam.sy(b.minY + 4));
-    ctx.quadraticCurveTo(cam.sx((b.minX + b.maxX) / 2), cam.sy(b.maxY), cam.sx(b.maxX), cam.sy(b.maxY - 4));
-    ctx.stroke();
   }
-
   // Massifs de fleurs.
   const rng = new Rng(Math.round(b.minX * 31 + b.minY * 17));
-  for (let i = 0; i < 5; i++) {
-    const x = b.minX + 6 + rng.next() * (b.maxX - b.minX - 12);
-    const y = b.minY + 6 + rng.next() * (b.maxY - b.minY - 12);
-    if (water && distanceToPolyline({ x, y }, [...water.polygon, water.polygon[0]!]) < 8) continue;
+  const beds = Math.min(8, Math.max(1, Math.round(polygonArea(park.polygon) / 900)));
+  for (let i = 0; i < beds; i++) {
+    const x = b.minX + 6 + rng.next() * Math.max(0, b.maxX - b.minX - 12);
+    const y = b.minY + 6 + rng.next() * Math.max(0, b.maxY - b.minY - 12);
     for (let k = 0; k < 6; k++) {
-      ctx.fillStyle = pickColor(theme.confetti, Math.floor(rng.next() * 6));
+      ctx.fillStyle = pickColor(FLOWERS, Math.floor(rng.next() * FLOWERS.length));
       ctx.beginPath();
       ctx.arc(cam.sx(x + rng.range(-2.5, 2.5)), cam.sy(y + rng.range(-1.5, 1.5)), 0.7 * cam.scale, 0, Math.PI * 2);
       ctx.fill();
     }
   }
+  ctx.restore();
+}
+
+function drawWood(view: CityView, wood: Area): void {
+  const { ctx, cam } = view;
+  polygonPath(view, wood.polygon);
+  ctx.fillStyle = theme.wood;
+  ctx.fill();
+  ctx.lineWidth = 1.5 * cam.scale;
+  ctx.strokeStyle = theme.woodEdge;
+  ctx.stroke();
 }
 
 function drawWater(view: CityView, water: Area): void {
   const { ctx, cam } = view;
   polygonPath(view, water.polygon);
-  ctx.fillStyle = theme.waterRim;
   ctx.lineWidth = 2.4 * cam.scale;
   ctx.strokeStyle = theme.waterRim;
   ctx.stroke();
   ctx.fillStyle = theme.water;
   ctx.fill();
-  // Reflets.
+  // Reflets, limités au plan d'eau.
+  ctx.save();
+  polygonPath(view, water.polygon);
+  ctx.clip();
   const b = bbox(water.polygon);
   const cx = cam.sx((b.minX + b.maxX) / 2);
   const cy = cam.sy((b.minY + b.maxY) / 2);
@@ -177,6 +198,7 @@ function drawWater(view: CityView, water: Area): void {
     ctx.lineTo(cx + rx * (dx + w), cy + ry * dy);
     ctx.stroke();
   }
+  ctx.restore();
 }
 
 function drawPlaza(view: CityView, plaza: Area): void {
@@ -200,25 +222,23 @@ function drawPlaza(view: CityView, plaza: Area): void {
 
 // --- Rues ----------------------------------------------------------------
 
-function isPathStreet(street: Street, map: GameMap): boolean {
-  return map.paths.some((path) => street.points.every((p) => distanceToPolyline(p, path.points) < 0.5));
-}
+/** Largeur des trottoirs (m). */
+const SIDEWALK = 2.5;
 
 function drawStreets(view: CityView, map: GameMap): void {
   const { ctx, cam } = view;
-  const sidewalk = 2.5;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   for (const s of map.streets) {
     polylinePath(view, s.points);
     ctx.strokeStyle = theme.curb;
-    ctx.lineWidth = (s.width + sidewalk * 2 + 0.8) * cam.scale;
+    ctx.lineWidth = (s.width + SIDEWALK * 2 + 0.8) * cam.scale;
     ctx.stroke();
   }
   for (const s of map.streets) {
     polylinePath(view, s.points);
     ctx.strokeStyle = theme.sidewalk;
-    ctx.lineWidth = (s.width + sidewalk * 2) * cam.scale;
+    ctx.lineWidth = (s.width + SIDEWALK * 2) * cam.scale;
     ctx.stroke();
   }
   for (const s of map.streets) {
@@ -227,52 +247,61 @@ function drawStreets(view: CityView, map: GameMap): void {
     ctx.lineWidth = s.width * cam.scale;
     ctx.stroke();
   }
-  // Ligne médiane pointillée sur les rues que les Gloutons n'empruntent pas.
+  // Ligne médiane pointillée sur les rues larges.
   ctx.setLineDash([3 * cam.scale, 4 * cam.scale]);
   ctx.strokeStyle = theme.roadLine;
   ctx.lineWidth = Math.max(1, 0.35 * cam.scale);
   ctx.lineCap = 'butt';
   for (const s of map.streets) {
-    if (isPathStreet(s, map)) continue;
+    if (s.width < 9) continue;
     polylinePath(view, s.points);
     ctx.stroke();
   }
   ctx.setLineDash([]);
 }
 
-/** Chemin des Gloutons : bande colorée et chevrons peints au sol. */
-function drawRoute(view: CityView, map: GameMap): void {
-  const { ctx, cam } = view;
-  for (const path of map.paths) {
-    polylinePath(view, path.points);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = theme.routeEdge;
-    ctx.lineWidth = 5 * cam.scale;
-    ctx.stroke();
+/** Position à l'écran d'un repère d'entrée : un peu vers l'intérieur, pour ne pas être coupé par le bord. */
+export function entryScreen(cam: Camera, entry: EntryMarker, unit: number): { x: number; y: number } {
+  return { x: cam.sx(entry.x) + entry.dirX * 13 * unit, y: cam.sy(entry.y) + entry.dirY * 13 * unit };
+}
 
-    const prepared = new PreparedPath(path.points);
-    const size = 1.9 * cam.scale;
-    ctx.strokeStyle = theme.route;
-    ctx.lineWidth = Math.max(1.5, 0.9 * cam.scale);
-    for (let d = 8; d < prepared.length - 12; d += 14) {
-      const s = prepared.sample(d);
-      const x = cam.sx(s.x);
-      const y = cam.sy(s.y);
-      const nx = -s.dirY;
-      const ny = s.dirX;
-      ctx.beginPath();
-      ctx.moveTo(x - s.dirX * size + nx * size, y - s.dirY * size + ny * size);
-      ctx.lineTo(x + s.dirX * size * 0.4, y + s.dirY * size * 0.4);
-      ctx.lineTo(x - s.dirX * size - nx * size, y - s.dirY * size - ny * size);
-      ctx.stroke();
-    }
-  }
+/** Repère d'entrée des virus : disque rouge et flèche vers l'intérieur du quartier. */
+function drawEntry(view: CityView, entry: EntryMarker): void {
+  const { ctx, cam, unit } = view;
+  const { x, y } = entryScreen(cam, entry, unit);
+  const r = 11 * unit;
+  ctx.fillStyle = theme.entry.fill;
+  ctx.strokeStyle = theme.entry.ring;
+  ctx.lineWidth = 2 * unit;
+  ctx.setLineDash([4 * unit, 3 * unit]);
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.setLineDash([]);
+  drawEntryArrow(ctx, x, y, entry.dirX, entry.dirY, unit);
+}
+
+export function drawEntryArrow(ctx: CanvasRenderingContext2D, x: number, y: number, dx: number, dy: number, unit: number): void {
+  const s = 5 * unit;
+  const nx = -dy;
+  const ny = dx;
+  ctx.fillStyle = theme.entry.ring;
+  ctx.strokeStyle = theme.entry.arrow;
+  ctx.lineWidth = 1.2 * unit;
+  ctx.beginPath();
+  ctx.moveTo(x + dx * s * 1.2, y + dy * s * 1.2);
+  ctx.lineTo(x - dx * s * 0.6 + nx * s * 0.9, y - dy * s * 0.6 + ny * s * 0.9);
+  ctx.lineTo(x - dx * s * 0.2, y - dy * s * 0.2);
+  ctx.lineTo(x - dx * s * 0.6 - nx * s * 0.9, y - dy * s * 0.6 - ny * s * 0.9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
 }
 
 // --- Socles --------------------------------------------------------------
 
-/** Cylindre vu de dessus en pseudo-3D (socle, plateforme, gâteau). */
+/** Cylindre vu de dessus en pseudo-3D (socle, plateforme). */
 export function cylinder(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -317,30 +346,17 @@ function drawPad(view: CityView, p: Vec2, elevation: number): void {
 
 // --- Ombres --------------------------------------------------------------
 
-function convexHull(points: Vec2[]): Vec2[] {
-  const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  const cross = (o: Vec2, a: Vec2, b: Vec2) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: Vec2[] = [];
-  for (const p of pts) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop();
-    lower.push(p);
-  }
-  const upper: Vec2[] = [];
-  for (const p of pts.reverse()) {
-    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop();
-    upper.push(p);
-  }
-  upper.pop();
-  lower.pop();
-  return [...lower, ...upper];
-}
-
 /** Hauteur (m) du point le plus haut d'un bâtiment (faîtage compris). */
 export function buildingTopHeight(b: Building): number {
-  return b.height + (b.roof === 'gable' ? ridgeHeight(b) : 0);
+  return b.height + (hasGableRoof(b) ? ridgeHeight(b) : 0);
 }
 
-/** Les ombres sont dessinées opaques dans un calque, puis posées en une fois (pas de double assombrissement). */
+/**
+ * Ombre d'un prisme : l'emprise, sa copie décalée et un quadrilatère par
+ * arête. Juste aussi pour les emprises non convexes. Les ombres sont
+ * dessinées opaques dans un calque, puis posées en une fois (pas de double
+ * assombrissement).
+ */
 function drawShadows(view: CityView, map: GameMap): void {
   const { ctx, shadowCanvas, cam, dpr } = view;
   const sctx = shadowCanvas.getContext('2d');
@@ -350,13 +366,27 @@ function drawShadows(view: CityView, map: GameMap): void {
   sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   sctx.fillStyle = theme.shadow.color;
   const { dx, dy } = theme.shadow;
+  const X = (p: Vec2) => cam.sx(p.x);
+  const Y = (p: Vec2) => cam.sy(p.y);
   for (const b of map.buildings) {
     const h = buildingTopHeight(b);
-    const hull = convexHull([...b.footprint, ...b.footprint.map((p) => ({ x: p.x + dx * h, y: p.y + dy * h }))]);
-    sctx.beginPath();
-    hull.forEach((p, i) => (i === 0 ? sctx.moveTo(cam.sx(p.x), cam.sy(p.y)) : sctx.lineTo(cam.sx(p.x), cam.sy(p.y))));
-    sctx.closePath();
-    sctx.fill();
+    const fp = b.footprint;
+    const moved = fp.map((p) => ({ x: p.x + dx * h, y: p.y + dy * h }));
+    // Chaque morceau est rempli à part : des sous-chemins de sens opposés s'annuleraient.
+    for (const poly of [fp, moved]) {
+      sctx.beginPath();
+      poly.forEach((p, i) => (i === 0 ? sctx.moveTo(X(p), Y(p)) : sctx.lineTo(X(p), Y(p))));
+      sctx.fill();
+    }
+    for (let i = 0; i < fp.length; i++) {
+      const j = (i + 1) % fp.length;
+      sctx.beginPath();
+      sctx.moveTo(X(fp[i]!), Y(fp[i]!));
+      sctx.lineTo(X(fp[j]!), Y(fp[j]!));
+      sctx.lineTo(X(moved[j]!), Y(moved[j]!));
+      sctx.lineTo(X(moved[i]!), Y(moved[i]!));
+      sctx.fill();
+    }
   }
   for (const t of map.trees) {
     const h = treeHeight(t);
@@ -388,19 +418,6 @@ function ridgeHeight(b: Building): number {
   return Math.min(shortSide * 0.35, 4);
 }
 
-function outwardNormal(a: Vec2, b: Vec2, center: Vec2): Vec2 {
-  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-  let nx = (b.y - a.y) / len;
-  let ny = -(b.x - a.x) / len;
-  const mx = (a.x + b.x) / 2 - center.x;
-  const my = (a.y + b.y) / 2 - center.y;
-  if (nx * mx + ny * my < 0) {
-    nx = -nx;
-    ny = -ny;
-  }
-  return { x: nx, y: ny };
-}
-
 /** Luminosité d'une face selon son orientation au sol (0,6 à 1). */
 function faceLight(n: Vec2): number {
   const l = Math.hypot(theme.light.x, theme.light.y);
@@ -408,22 +425,52 @@ function faceLight(n: Vec2): number {
   return 0.8 + 0.2 * dot;
 }
 
-function drawBuilding(view: CityView, b: Building): void {
+interface BuildingLook {
+  walls: string;
+  roof: string;
+  base: boolean;
+}
+
+function lookOf(b: Building, isBase: boolean): BuildingLook {
+  if (isBase) return { walls: theme.base.walls, roof: theme.base.roof, base: true };
+  const colors = theme.buildings[b.kind ?? 'house'];
+  return {
+    walls: pickColor(colors.walls, b.palette),
+    roof: pickColor(hasGableRoof(b) ? colors.gableRoofs : colors.flatRoofs, b.palette),
+    base: false,
+  };
+}
+
+function drawBuilding(view: CityView, b: Building, isBase: boolean): void {
   const { ctx, cam } = view;
   const fp = b.footprint;
-  const center = { x: fp.reduce((s, p) => s + p.x, 0) / fp.length, y: fp.reduce((s, p) => s + p.y, 0) / fp.length };
-  const wallColor = pickColor(theme.walls, b.palette);
+  const orientation = signedArea(fp);
+  const look = lookOf(b, isBase);
   const top = liftPx(cam, b.height);
   const P = (p: Vec2, h: number) => ({ x: cam.sx(p.x), y: cam.sy(p.y) - liftPx(cam, h) });
 
-  // Murs visibles (orientés vers le sud, donc vers la caméra).
+  if (isBase) {
+    // Halo au sol autour du bâtiment à protéger.
+    const c = interiorPoint(fp);
+    const r = Math.sqrt(polygonArea(fp) / Math.PI) + 8;
+    ctx.fillStyle = theme.base.halo;
+    ctx.beginPath();
+    ctx.ellipse(cam.sx(c.x), cam.sy(c.y), r * cam.scale, r * cam.scale * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Murs tournés vers le sud (vers la caméra), du plus loin au plus proche.
+  const walls: { a: Vec2; c: Vec2; n: Vec2; depth: number }[] = [];
   for (let i = 0; i < fp.length; i++) {
     const a = fp[i]!;
     const c = fp[(i + 1) % fp.length]!;
-    const n = outwardNormal(a, c, center);
-    if (n.y <= 0.05) continue;
+    const n = outwardNormal(a, c, orientation);
+    if (n.y > 0.05) walls.push({ a, c, n, depth: (a.y + c.y) / 2 });
+  }
+  walls.sort((x, y) => x.depth - y.depth);
+  for (const { a, c, n } of walls) {
     const k = faceLight(n);
-    ctx.fillStyle = shade(wallColor, k - 1);
+    ctx.fillStyle = shade(look.walls, k - 1);
     const g1 = P(a, 0);
     const g2 = P(c, 0);
     ctx.beginPath();
@@ -443,8 +490,8 @@ function drawBuilding(view: CityView, b: Building): void {
     ctx.stroke();
   }
 
-  if (b.roof === 'gable' && fp.length === 4) drawGableRoof(view, b, center);
-  else drawFlatRoof(view, b, center);
+  if (hasGableRoof(b)) drawGableRoof(view, b, look, orientation);
+  else drawFlatRoof(view, b, look);
 }
 
 function drawWindows(view: CityView, a: Vec2, c: Vec2, height: number, light: number): void {
@@ -452,7 +499,7 @@ function drawWindows(view: CityView, a: Vec2, c: Vec2, height: number, light: nu
   const length = Math.hypot(c.x - a.x, c.y - a.y);
   const floors = Math.max(1, Math.floor(height / 3.2));
   const perRow = Math.floor((length - 1.5) / 3);
-  if (perRow < 1) return;
+  if (perRow < 1 || height < 2.5) return;
   ctx.fillStyle = light > 0.8 ? theme.window : 'rgba(70, 95, 135, 0.38)';
   const at = (t: number, h: number) => ({
     x: cam.sx(a.x + (c.x - a.x) * t),
@@ -480,24 +527,39 @@ function drawWindows(view: CityView, a: Vec2, c: Vec2, height: number, light: nu
   }
 }
 
-function drawFlatRoof(view: CityView, b: Building, center: Vec2): void {
+function drawFlatRoof(view: CityView, b: Building, look: BuildingLook): void {
   const { ctx, cam } = view;
-  const color = pickColor(theme.flatRoofs, b.palette);
-  polygonPath(view, b.footprint, liftPx(cam, b.height));
-  ctx.fillStyle = color;
+  const lift = liftPx(cam, b.height);
+  polygonPath(view, b.footprint, lift);
+  ctx.fillStyle = look.roof;
   ctx.fill();
-  ctx.strokeStyle = shade(color, -0.18);
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = look.base ? theme.base.roofEdge : shade(look.roof, -0.18);
+  ctx.lineWidth = look.base ? Math.max(1.5, 0.6 * cam.scale) : 1;
   ctx.stroke();
-  // Rebord intérieur (acrotère).
-  const inset = b.footprint.map((p) => ({ x: p.x + (center.x - p.x) * 0.16, y: p.y + (center.y - p.y) * 0.16 }));
-  polygonPath(view, inset, liftPx(cam, b.height));
-  ctx.strokeStyle = shade(color, -0.1);
-  ctx.lineWidth = Math.max(1, 0.5 * cam.scale);
-  ctx.stroke();
+  const center = interiorPoint(b.footprint);
+  // Rebord intérieur (acrotère), seulement sur une forme convexe où il reste à l'intérieur.
+  if (isConvex(b.footprint) && polygonArea(b.footprint) > 60) {
+    const inset = b.footprint.map((p) => ({ x: p.x + (center.x - p.x) * 0.12, y: p.y + (center.y - p.y) * 0.12 }));
+    polygonPath(view, inset, lift);
+    ctx.strokeStyle = shade(look.roof, look.base ? 0.25 : -0.1);
+    ctx.lineWidth = Math.max(1, 0.5 * cam.scale);
+    ctx.stroke();
+  }
+  if (look.base) drawCross(view, center, b.height, Math.sqrt(polygonArea(b.footprint)) * 0.22);
 }
 
-function drawGableRoof(view: CityView, b: Building, center: Vec2): void {
+/** Croix sanitaire sur le toit de la base. */
+function drawCross(view: CityView, at: Vec2, height: number, size: number): void {
+  const { ctx, cam } = view;
+  const s = Math.max(3, Math.min(size, 7)) * cam.scale;
+  const x = cam.sx(at.x);
+  const y = cam.sy(at.y) - liftPx(cam, height);
+  ctx.fillStyle = theme.base.cross;
+  ctx.fillRect(x - s * 0.3, y - s, s * 0.6, s * 2);
+  ctx.fillRect(x - s, y - s * 0.3, s * 2, s * 0.6);
+}
+
+function drawGableRoof(view: CityView, b: Building, look: BuildingLook, orientation: number): void {
   const { ctx, cam } = view;
   let [p0, p1, p2, p3] = b.footprint as [Vec2, Vec2, Vec2, Vec2];
   // Le faîtage suit le grand côté.
@@ -510,14 +572,12 @@ function drawGableRoof(view: CityView, b: Building, center: Vec2): void {
   const h = b.height;
   const rh = h + ridgeHeight(b);
   const P = (p: Vec2, z: number) => ({ x: cam.sx(p.x), y: cam.sy(p.y) - liftPx(cam, z) });
-  const roofColor = pickColor(theme.gableRoofs, b.palette);
-  const wallColor = pickColor(theme.walls, b.palette);
 
   // Pignons orientés vers le sud.
   for (const [a, c, r] of [[p3, p0, r0], [p1, p2, r1]] as const) {
-    const n = outwardNormal(a, c, center);
+    const n = outwardNormal(a, c, orientation);
     if (n.y <= 0.05) continue;
-    ctx.fillStyle = shade(wallColor, faceLight(n) - 1);
+    ctx.fillStyle = shade(look.walls, faceLight(n) - 1);
     const A = P(a, h);
     const C = P(c, h);
     const R = P(r, rh);
@@ -531,24 +591,24 @@ function drawGableRoof(view: CityView, b: Building, center: Vec2): void {
 
   // Pans de toit : celui tourné vers le nord d'abord.
   const planes = [
-    { pts: [p0, p1, r1, r0], n: outwardNormal(p0, p1, center) },
-    { pts: [p2, p3, r0, r1], n: outwardNormal(p2, p3, center) },
+    { pts: [p0, p1, r1, r0], n: outwardNormal(p0, p1, orientation) },
+    { pts: [p2, p3, r0, r1], n: outwardNormal(p2, p3, orientation) },
   ].sort((a, c) => a.n.y - c.n.y);
   for (const plane of planes) {
     const pts = plane.pts.map((p, i) => P(p, i < 2 ? h : rh));
     ctx.beginPath();
     pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.closePath();
-    ctx.fillStyle = shade(roofColor, (faceLight(plane.n) - 0.85) * 1.6);
+    ctx.fillStyle = shade(look.roof, (faceLight(plane.n) - 0.85) * 1.6);
     ctx.fill();
-    ctx.strokeStyle = shade(roofColor, -0.25);
+    ctx.strokeStyle = shade(look.roof, -0.25);
     ctx.lineWidth = 1;
     ctx.stroke();
   }
   // Faîtage.
   const R0 = P(r0, rh);
   const R1 = P(r1, rh);
-  ctx.strokeStyle = shade(roofColor, 0.35);
+  ctx.strokeStyle = shade(look.roof, 0.35);
   ctx.lineWidth = Math.max(1, 0.45 * cam.scale);
   ctx.beginPath();
   ctx.moveTo(R0.x, R0.y);

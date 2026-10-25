@@ -1,7 +1,15 @@
 // Thème visuel « ville miniature » : couleurs douces, lumière venant du
-// nord-ouest, ombres vers le sud-est. Les tailles des personnages et tourelles
+// nord-ouest, ombres vers le sud-est. Les tailles des virus et des dispositifs
 // sont en pixels CSS à l'échelle de référence, multipliées par un facteur
 // d'adaptation à l'écran ; les rues et bâtiments sont en mètres.
+
+import type { BuildingKind } from '../game/types';
+
+export interface BuildingColors {
+  walls: string[];
+  gableRoofs: string[];
+  flatRoofs: string[];
+}
 
 export const theme = {
   font: "'Fredoka Variable', 'Fredoka', system-ui, sans-serif",
@@ -13,63 +21,105 @@ export const theme = {
   /** Direction (au sol) d'où vient la lumière, pour l'ombrage des murs et des toits. */
   light: { x: -0.7, y: -0.55 },
 
-  ground: '#cfe6ad',
-  groundSpeckle: 'rgba(120, 170, 90, 0.18)',
-  park: '#b5dc8e',
-  parkEdge: '#9fcd78',
+  ground: '#d3e6b5',
+  groundSpeckle: 'rgba(120, 170, 90, 0.16)',
+  park: '#b9dc94',
+  parkEdge: '#a3cf7f',
   parkPath: '#f3e7c9',
+  wood: '#93c47a',
+  woodEdge: '#7fb468',
   water: '#7fcdf2',
   waterDeep: '#5fb6e6',
   waterRim: '#e9f6fb',
-  plaza: '#f6ead8',
-  plazaLine: '#e8d6bd',
+  plaza: '#eef0f2',
+  plazaLine: '#d9dee5',
 
-  sidewalk: '#ece6dc',
-  curb: '#d9d1c4',
-  road: '#8e95a8',
-  roadLine: 'rgba(255, 255, 255, 0.75)',
-  route: '#ffb648',
-  routeEdge: 'rgba(255, 182, 72, 0.35)',
+  sidewalk: '#ece8e1',
+  curb: '#d6d0c6',
+  road: '#8f97a8',
+  roadLine: 'rgba(255, 255, 255, 0.7)',
 
-  walls: ['#f7e8cc', '#f6cfb8', '#d3eadb', '#d4e2f4', '#e6d8f2', '#f8e7a8'],
-  gableRoofs: ['#e2785e', '#6f84ad', '#58a8a0', '#d76b8c', '#a99c90', '#e3a456'],
-  flatRoofs: ['#efebe4', '#e3e9ee', '#ece4ea', '#e9ede3', '#f1ece0', '#e6e6ef'],
+  /** Couleurs par usage de bâtiment (variantes choisies par `palette`). */
+  buildings: {
+    house: {
+      walls: ['#f7ead2', '#f4dcc8', '#e1ecdf', '#e0e8f2', '#ece3ef', '#f6ecc4'],
+      gableRoofs: ['#d9806a', '#8191b3', '#6aa9a2', '#c98a73', '#a99c90', '#d6a25e'],
+      flatRoofs: ['#efebe4', '#e3e9ee', '#ece4ea', '#e9ede3', '#f1ece0', '#e6e6ef'],
+    },
+    apartments: {
+      walls: ['#eef0f4', '#f1ebe3', '#e5ecef', '#ece9f1', '#efede6', '#e6eee8'],
+      gableRoofs: ['#8191b3'],
+      flatRoofs: ['#d9dee6', '#dcd8d0', '#d3dde0', '#dad6e0', '#dedbd2', '#d4ddd6'],
+    },
+    public: {
+      walls: ['#fbf6ec', '#f3f1ea', '#f6efe6'],
+      gableRoofs: ['#b5705c', '#7f8fae'],
+      flatRoofs: ['#e9d9c2', '#dfe3d2', '#e5dccf'],
+    },
+    commercial: {
+      walls: ['#e4e6ea', '#e9e3da', '#dfe5e3'],
+      gableRoofs: ['#9aa3b2'],
+      flatRoofs: ['#c9ced6', '#cfcac2', '#c6cfcc'],
+    },
+    annex: {
+      walls: ['#d8cbb8', '#cfd3d8', '#d9d0c4'],
+      gableRoofs: ['#a58a73', '#8d96a3'],
+      flatRoofs: ['#b9b2a8', '#b3b8bf', '#bdb4a9'],
+    },
+  } as Record<BuildingKind, BuildingColors>,
   window: 'rgba(90, 120, 160, 0.35)',
+
+  /** Bâtiment à protéger : blanc et bleu-vert, croix sur le toit. */
+  base: {
+    walls: '#ffffff',
+    roof: '#2bb3a6',
+    roofEdge: '#1f8f85',
+    cross: '#ffffff',
+    halo: 'rgba(43, 179, 166, 0.28)',
+  },
 
   trees: ['#6fbf5e', '#5aae55', '#86c96a', '#4f9f63'],
   trunk: '#9a6b47',
 
-  pad: { top: '#eef0f3', side: '#c5cbd6', stripe: '#ffb648' },
-  slotMarker: { ring: '#ffffff', fill: 'rgba(255, 255, 255, 0.7)', plus: '#ff7a59' },
+  pad: { top: '#f4f6f8', side: '#c5cbd6', stripe: '#2bb3a6' },
+  slotMarker: { ring: '#ffffff', fill: 'rgba(255, 255, 255, 0.75)', plus: '#1f9e93' },
 
-  cake: {
-    plate: '#ffffff',
-    sponge: '#e9a96b',
-    cream: '#fff6ea',
-    frosting: ['#ff9ec4', '#ffb3d1'],
-    cherry: '#e83f5b',
-    crumbs: '#d9925a',
-  },
+  /** Repères d'entrée des virus. */
+  entry: { fill: 'rgba(232, 72, 85, 0.22)', ring: '#e84855', arrow: '#ffffff', pulse: 'rgba(232, 72, 85, 0.5)' },
 
+  /** Dispositifs sanitaires : blanc et bleu-vert, une couleur d'accent chacun. */
   towers: {
-    bulles: { main: '#3cc6cc', dark: '#2a9aa5', accent: '#ff8fbf' },
-    ballons: { main: '#ffb648', dark: '#e08e2b', accent: '#4fa3ff' },
+    pulverisateur: { main: '#ffffff', dark: '#cfe3e1', accent: '#20a99d' },
+    diffuseur: { main: '#ffffff', dark: '#cfe3e1', accent: '#3a86c8' },
+    laser: { main: '#ffffff', dark: '#d5dbe8', accent: '#7b5cff' },
+    purificateur: { main: '#ffffff', dark: '#cfe3e1', accent: '#36c2b4' },
   } as Record<string, { main: string; dark: string; accent: string }>,
+  towerBody: '#2bb3a6',
+  towerBodyDark: '#1f8f85',
+  levelPip: '#ffc93c',
 
+  /** Virus stylisés : corps, pointes et taille (px à l'échelle de référence). */
   enemies: {
-    glouton: { body: '#74d36b', dark: '#4fb04a', size: 8 },
-    filou: { body: '#b083f0', dark: '#8a5fd0', size: 6.8 },
-    bouboule: { body: '#ffa24c', dark: '#e57f25', size: 10.5 },
-  } as Record<string, { body: string; dark: string; size: number }>,
+    virus: { body: '#e8636f', dark: '#c4404f', spikes: 10, size: 7 },
+    variant: { body: '#f2a03d', dark: '#d07b16', spikes: 8, size: 5.8 },
+    amas: { body: '#9b6fd6', dark: '#7a4fb8', spikes: 12, size: 9 },
+    blinde: { body: '#5b7a8c', dark: '#3e5a6b', spikes: 14, size: 11 },
+    megavirus: { body: '#c0304a', dark: '#8f1f36', spikes: 18, size: 17 },
+  } as Record<string, { body: string; dark: string; spikes: number; size: number }>,
+  slowTint: 'rgba(100, 200, 255, 0.55)',
 
-  bubble: { fill: 'rgba(200, 245, 255, 0.45)', stroke: 'rgba(120, 200, 255, 0.9)', shine: '#ffffff' },
-  balloon: { fill: '#4fa3ff', dark: '#2f7fe0', splash: '#7cc4ff' },
+  droplet: { fill: 'rgba(170, 235, 230, 0.9)', stroke: '#20a99d' },
+  capsule: { fill: '#ffffff', band: '#3a86c8' },
+  cloud: { fill: 'rgba(190, 240, 235, 0.55)', edge: 'rgba(120, 210, 200, 0.8)' },
+  beam: { core: '#f3eeff', glow: 'rgba(123, 92, 255, 0.55)' },
+  field: { fill: 'rgba(54, 194, 180, 0.10)', ring: 'rgba(54, 194, 180, 0.55)' },
 
-  hpBar: { back: 'rgba(40, 50, 70, 0.55)', good: '#5fd46a', mid: '#ffcc4d', low: '#ff6b6b' },
-  range: { stroke: 'rgba(255, 255, 255, 0.95)', fill: 'rgba(255, 255, 255, 0.18)' },
-  confetti: ['#ff7a59', '#ffcc4d', '#5fd46a', '#4fa3ff', '#b083f0', '#ff8fbf'],
+  hpBar: { back: 'rgba(40, 50, 70, 0.55)', good: '#3fbf6b', mid: '#ffcc4d', low: '#ff5a6e' },
+  range: { stroke: 'rgba(255, 255, 255, 0.95)', fill: 'rgba(255, 255, 255, 0.18)', next: 'rgba(43, 179, 166, 0.9)' },
+  dissolve: ['#ffffff', '#d8f3ef', '#bfe9e3'],
   coinText: '#ffc93c',
-  textOutline: 'rgba(60, 50, 40, 0.75)',
+  damageText: '#ff5a6e',
+  textOutline: 'rgba(40, 45, 60, 0.75)',
   fallback: '#cccccc',
 
   /** Échelle (px CSS par mètre) pour laquelle les tailles ci-dessus sont prévues. */

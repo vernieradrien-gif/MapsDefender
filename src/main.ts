@@ -20,7 +20,8 @@ window.addEventListener('error', (e) => report(e.error ?? e.message));
 window.addEventListener('unhandledrejection', (e) => report(e.reason));
 
 try {
-  new App(root, { debug: new URLSearchParams(location.search).has('debug') });
+  const params = new URLSearchParams(location.search);
+  new App(root, { debug: params.has('debug'), demo: params.has('demo') });
 } catch (error) {
   report(error);
 }
