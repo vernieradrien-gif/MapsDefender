@@ -1,0 +1,8 @@
+{
+  "appId": "io.github.vernieradrien.streetdefense",
+  "appName": "StreetDefense",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#d3e6b5"
+  }
+}

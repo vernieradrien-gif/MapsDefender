@@ -1,0 +1,51 @@
+# Construit l'APK Android de test (Capacitor, publicités de TEST uniquement).
+# - Sur une pull request et sur main : l'APK est disponible dans l'onglet
+#   Actions, rubrique « Artifacts » de l'exécution (streetdefense-debug-apk).
+# - APK « debug » : signé avec la clé de débogage, installable pour tester,
+#   pas destiné au Play Store (la signature de publication viendra au jalon 6).
+name: APK Android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - name: Build du site (chemins relatifs pour l'appli)
+        run: npm run build
+
+      - name: Copie dans le projet Android
+        run: npx cap sync android
+
+      - name: Construction de l'APK (debug)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: streetdefense-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
