@@ -464,9 +464,11 @@ interface BuildingLook {
 function lookOf(b: Building, isBase: boolean): BuildingLook {
   if (isBase) return { walls: theme.base.walls, roof: theme.base.roof, base: true };
   const colors = theme.buildings[b.kind ?? 'house'];
+  const gable = hasGableRoof(b);
+  const schoolRoof = gable ? theme.landmarks.schoolGableRoof : theme.landmarks.schoolFlatRoof;
   return {
     walls: pickColor(colors.walls, b.palette),
-    roof: pickColor(hasGableRoof(b) ? colors.gableRoofs : colors.flatRoofs, b.palette),
+    roof: b.landmark === 'school' ? schoolRoof : pickColor(gable ? colors.gableRoofs : colors.flatRoofs, b.palette),
     base: false,
   };
 }
@@ -522,6 +524,82 @@ function drawBuilding(view: CityView, b: Building, isBase: boolean): void {
 
   if (hasGableRoof(b)) drawGableRoof(view, b, look, orientation);
   else drawFlatRoof(view, b, look);
+  if (!isBase && b.landmark === 'worship') drawSteeple(view, b);
+  if (!isBase && b.landmark === 'townhall') drawFlag(view, b);
+}
+
+/** Clocher d'un lieu de culte : tour carrée à l'extrémité ouest (ou nord) du bâtiment, avec sa flèche. */
+function drawSteeple(view: CityView, b: Building): void {
+  const { ctx, cam } = view;
+  const rect = minimumBoundingRect(b.footprint).corners;
+  if (rect.length !== 4) return;
+  const [p0, p1, p2] = rect as [Vec2, Vec2, Vec2, Vec2];
+  const side1 = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+  const side2 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+  const long = side1 >= side2 ? { a: p0, c: p1, len: side1, short: side2 } : { a: p1, c: p2, len: side2, short: side1 };
+  let ux = (long.c.x - long.a.x) / long.len;
+  let uy = (long.c.y - long.a.y) / long.len;
+  // Vers l'ouest, ou vers le nord si le bâtiment est orienté nord-sud.
+  if (Math.abs(ux) > 0.35 ? ux > 0 : uy > 0) {
+    ux = -ux;
+    uy = -uy;
+  }
+  const center = { x: rect.reduce((s, p) => s + p.x, 0) / 4, y: rect.reduce((s, p) => s + p.y, 0) / 4 };
+  const size = Math.max(3, Math.min(6, long.short * 0.5));
+  const at = { x: center.x + ux * (long.len / 2 - size / 2), y: center.y + uy * (long.len / 2 - size / 2) };
+  const h = size / 2;
+  const square = [
+    { x: at.x + (ux - uy) * h, y: at.y + (uy + ux) * h },
+    { x: at.x + (ux + uy) * h, y: at.y + (uy - ux) * h },
+    { x: at.x + (-ux + uy) * h, y: at.y + (-uy - ux) * h },
+    { x: at.x + (-ux - uy) * h, y: at.y + (-uy + ux) * h },
+  ];
+  const towerHeight = b.height + ridgeHeight(b) + Math.max(6, b.height * 0.7);
+  drawBuilding(view, { id: -b.id, footprint: square, height: towerHeight, roof: 'flat', palette: 0, kind: 'public' }, false);
+  // Flèche : quatre faces jusqu'à la pointe, celles tournées vers le nord d'abord.
+  const orientation = signedArea(square);
+  const P = (p: Vec2, z: number) => ({ x: cam.sx(p.x), y: cam.sy(p.y) - liftPx(cam, z) });
+  const apex = P(at, towerHeight + size * 1.8);
+  const faces = square
+    .map((p, i) => ({ a: p, c: square[(i + 1) % 4]!, n: outwardNormal(p, square[(i + 1) % 4]!, orientation) }))
+    .sort((x, y) => x.n.y - y.n.y);
+  for (const { a, c, n } of faces) {
+    const A = P(a, towerHeight);
+    const C = P(c, towerHeight);
+    ctx.fillStyle = shade(theme.landmarks.spire, (faceLight(n) - 0.85) * 1.6);
+    ctx.beginPath();
+    ctx.moveTo(A.x, A.y);
+    ctx.lineTo(C.x, C.y);
+    ctx.lineTo(apex.x, apex.y);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+/** Drapeau tricolore sur le toit d'une mairie. */
+function drawFlag(view: CityView, b: Building): void {
+  const { ctx, cam } = view;
+  const c = interiorPoint(b.footprint);
+  const roof = b.height + (hasGableRoof(b) ? ridgeHeight(b) : 0);
+  const x = cam.sx(c.x);
+  const base = cam.sy(c.y) - liftPx(cam, roof);
+  const top = base - liftPx(cam, 6);
+  ctx.strokeStyle = theme.landmarks.pole;
+  ctx.lineWidth = Math.max(1, 0.25 * cam.scale);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, base);
+  ctx.lineTo(x, top);
+  ctx.stroke();
+  const stripe = Math.max(1.5, 1.1 * cam.scale);
+  const height = Math.max(3, 2.2 * cam.scale);
+  theme.landmarks.flag.forEach((color, i) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x + i * stripe, top, stripe, height);
+  });
+  ctx.strokeStyle = 'rgba(40, 50, 70, 0.25)';
+  ctx.lineWidth = 0.6;
+  ctx.strokeRect(x, top, stripe * 3, height);
 }
 
 function drawWindows(view: CityView, a: Vec2, c: Vec2, height: number, light: number): void {

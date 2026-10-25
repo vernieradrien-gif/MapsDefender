@@ -72,6 +72,16 @@ export const theme = {
   } as Record<BuildingKind, BuildingColors>,
   window: 'rgba(90, 120, 160, 0.35)',
 
+  /** Bâtiments publics reconnaissables : clocher, drapeau de la mairie, toit des écoles. */
+  landmarks: {
+    steeple: '#f3ece0',
+    spire: '#7d8bab',
+    pole: '#8a8f9c',
+    flag: ['#1f5fbf', '#ffffff', '#e5414b'],
+    schoolFlatRoof: '#f2c35b',
+    schoolGableRoof: '#e48a4f',
+  },
+
   /** Bâtiment à protéger : blanc et bleu-vert, croix sur le toit. */
   base: {
     walls: '#ffffff',
