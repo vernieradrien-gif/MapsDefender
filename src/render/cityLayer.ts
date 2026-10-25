@@ -554,12 +554,12 @@ function drawSteeple(view: CityView, b: Building): void {
     { x: at.x + (-ux + uy) * h, y: at.y + (-uy - ux) * h },
     { x: at.x + (-ux - uy) * h, y: at.y + (-uy + ux) * h },
   ];
-  const towerHeight = b.height + ridgeHeight(b) + Math.max(6, b.height * 0.7);
+  const towerHeight = b.height + ridgeHeight(b) + Math.max(10, b.height);
   drawBuilding(view, { id: -b.id, footprint: square, height: towerHeight, roof: 'flat', palette: 0, kind: 'public' }, false);
   // Flèche : quatre faces jusqu'à la pointe, celles tournées vers le nord d'abord.
   const orientation = signedArea(square);
   const P = (p: Vec2, z: number) => ({ x: cam.sx(p.x), y: cam.sy(p.y) - liftPx(cam, z) });
-  const apex = P(at, towerHeight + size * 1.8);
+  const apex = P(at, towerHeight + size * 2.4);
   const faces = square
     .map((p, i) => ({ a: p, c: square[(i + 1) % 4]!, n: outwardNormal(p, square[(i + 1) % 4]!, orientation) }))
     .sort((x, y) => x.n.y - y.n.y);
@@ -583,7 +583,7 @@ function drawFlag(view: CityView, b: Building): void {
   const roof = b.height + (hasGableRoof(b) ? ridgeHeight(b) : 0);
   const x = cam.sx(c.x);
   const base = cam.sy(c.y) - liftPx(cam, roof);
-  const top = base - liftPx(cam, 6);
+  const top = base - liftPx(cam, 10);
   ctx.strokeStyle = theme.landmarks.pole;
   ctx.lineWidth = Math.max(1, 0.25 * cam.scale);
   ctx.lineCap = 'round';
@@ -591,8 +591,8 @@ function drawFlag(view: CityView, b: Building): void {
   ctx.moveTo(x, base);
   ctx.lineTo(x, top);
   ctx.stroke();
-  const stripe = Math.max(1.5, 1.1 * cam.scale);
-  const height = Math.max(3, 2.2 * cam.scale);
+  const stripe = Math.max(2.5, 1.7 * cam.scale);
+  const height = Math.max(5, 3.4 * cam.scale);
   theme.landmarks.flag.forEach((color, i) => {
     ctx.fillStyle = color;
     ctx.fillRect(x + i * stripe, top, stripe, height);
