@@ -17,7 +17,9 @@ export function straightMap(): GameMap {
     seed: 42,
     bounds: { minX: 0, minY: -50, maxX: 100, maxY: 50 },
     base: { x: 100, y: 0 },
+    baseBuildingId: null,
     paths: [{ id: 'p', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }],
+    entries: [{ x: 0, y: 0, dirX: 1, dirY: 0 }],
     slots: [
       { id: 1, x: 50, y: 15, kind: 'pad', elevation: 0.6, buildingId: null },
       { id: 2, x: 80, y: -15, kind: 'pad', elevation: 0.6, buildingId: null },
@@ -37,5 +39,6 @@ export function run(game: Game, seconds: number): void {
 }
 
 export function newGame(map = straightMap(), config = testConfig(), options?: GameOptions): Game {
-  return new Game(map, config, options);
+  // Facteur de carte neutre : les tests de la simulation ne dépendent pas de la longueur des chemins.
+  return new Game(map, config, { mapFactor: 1, ...options });
 }

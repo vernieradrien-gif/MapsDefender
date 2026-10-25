@@ -31,4 +31,24 @@ describe('menu radial', () => {
       for (const p of radialPositions(center, 2, view)) expect(inside(p)).toBe(true);
     }
   });
+
+  it('dispose les 4 tourelles en arc, sans chevauchement, dans l’écran et sans cacher l’emplacement', () => {
+    // Boutons de 68 px, étiquettes de 80 px au plus.
+    const insideArc = (p: { x: number; y: number }) =>
+      p.x - 40 >= view.x && p.x + 40 <= view.x + view.width && p.y - 36 >= view.y && p.y + 66 <= view.y + view.height;
+    const positions = radialPositions({ x: 200, y: 400 }, 4, view);
+    expect(positions).toHaveLength(4);
+    for (const p of positions) expect(p.y).toBeLessThan(400);
+    for (let i = 1; i < positions.length; i++) {
+      const a = positions[i - 1]!;
+      const b = positions[i]!;
+      expect(Math.abs(a.x - b.x)).toBeGreaterThanOrEqual(80);
+    }
+    for (const center of [{ x: 200, y: 400 }, { x: 20, y: 300 }, { x: 390, y: 650 }, { x: 10, y: 70 }, { x: 380, y: 755 }]) {
+      for (const p of radialPositions(center, 4, view)) {
+        expect(insideArc(p)).toBe(true);
+        expect(Math.hypot(p.x - center.x, p.y - center.y)).toBeGreaterThan(45);
+      }
+    }
+  });
 });

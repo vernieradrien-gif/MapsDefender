@@ -3,7 +3,9 @@ import { canAfford, killScore, victoryScore, waveBonus, waveClearScore } from '.
 import type { GameEvent } from './events';
 import { PreparedPath, type PathSample } from './path';
 import { Rng } from './rng';
+import { mapFactor, scaledStartMoney } from './scaling';
 import { candidatesInRadius, selectTarget } from './targeting';
+import { heightBonus, sellValue, towerStats, upgradeCost } from './towers';
 import type { GameMap, TowerSlot } from './types';
 import { buildWavePlan, scaledHp } from './waves';
 
@@ -16,6 +18,8 @@ export type PlaceTowerResult =
   | 'occupied'
   | 'unknown-tower'
   | 'insufficient-funds';
+
+export type UpgradeTowerResult = 'ok' | 'game-over' | 'unknown-tower' | 'max-level' | 'insufficient-funds';
 
 export interface Enemy {
   id: number;
@@ -30,6 +34,8 @@ export interface Enemy {
   offset: number;
   hp: number;
   maxHp: number;
+  /** Ralentissement subi à ce pas (0 = aucun, 0,4 = 40 % plus lent). */
+  slow: number;
   x: number;
   y: number;
   /** Position au pas précédent (interpolation du rendu). */
@@ -46,17 +52,29 @@ export interface Tower {
   slotId: number;
   x: number;
   y: number;
+  /** Niveau d'amélioration (0 = juste posée). */
+  level: number;
+  /** Total dépensé pour cette tourelle (pose + améliorations). */
+  invested: number;
+  /** Bonus de portée dû à la hauteur du toit (0 sur un socle). */
+  heightBonus: number;
+  /** Caractéristiques effectives (niveau et bonus de hauteur compris). */
+  range: number;
+  damage: number;
+  fireInterval: number;
+  slow: number;
   /** Secondes avant le prochain tir possible. */
   cooldown: number;
   /** Orientation de la tourelle (radians). */
   angle: number;
+  /** Virus visé ; pour un champ, 0 tant qu'au moins un virus s'y trouve. */
   targetId: number | null;
 }
 
 export interface Projectile {
   id: number;
   towerId: number;
-  /** Identifiant du type de tourelle (pour le rendu : bulle, ballon…). */
+  /** Identifiant du type de tourelle (pour le rendu : gouttelette, capsule…). */
   towerType: string;
   x: number;
   y: number;
@@ -89,6 +107,8 @@ export interface GameOptions {
   startMoney?: number;
   /** Remplace la graine de la carte. */
   seed?: number;
+  /** Remplace le facteur de carte (longueur des itinéraires / référence). */
+  mapFactor?: number;
 }
 
 /**
@@ -101,6 +121,9 @@ export class Game {
   readonly paths: readonly PreparedPath[];
   readonly totalWaves: number;
   readonly baseMaxHp: number;
+  /** Facteur de carte : multiplie le nombre de virus par vague et l'argent de départ. */
+  readonly mapFactor: number;
+  readonly startMoney: number;
 
   readonly enemies: Enemy[] = [];
   readonly towers: Tower[] = [];
@@ -121,6 +144,7 @@ export class Game {
   private readonly towerConfigs = new Map<string, TowerConfig>();
   private readonly slotsById = new Map<number, TowerSlot>();
   private readonly towerBySlot = new Map<number, Tower>();
+  private readonly towerById = new Map<number, Tower>();
   private readonly enemyById = new Map<number, Enemy>();
   private readonly activeWaves: ActiveWave[] = [];
   private events: GameEvent[] = [];
@@ -136,7 +160,9 @@ export class Game {
     this.totalWaves = config.waves.total;
     this.baseMaxHp = config.base.hp;
     this._baseHp = config.base.hp;
-    this._money = options.startMoney ?? config.economy.startMoney;
+    this.mapFactor = options.mapFactor ?? mapFactor(map.paths, config.mapScaling);
+    this.startMoney = options.startMoney ?? scaledStartMoney(config, this.mapFactor);
+    this._money = this.startMoney;
     this._countdown = config.waves.prepSeconds;
     this.rng = new Rng(options.seed ?? map.seed);
     for (const e of config.enemies) this.enemyConfigs.set(e.id, e);
@@ -184,8 +210,40 @@ export class Game {
     return this.towerBySlot.get(slotId);
   }
 
+  getTower(id: number): Tower | undefined {
+    return this.towerById.get(id);
+  }
+
   towerConfig(id: string): TowerConfig | undefined {
     return this.towerConfigs.get(id);
+  }
+
+  slot(id: number): TowerSlot | undefined {
+    return this.slotsById.get(id);
+  }
+
+  /** Portée qu'aurait ce type de tourelle posé sur cet emplacement (niveau 0, bonus de hauteur compris). */
+  previewRange(slotId: number, towerId: string): number {
+    const slot = this.slotsById.get(slotId);
+    const config = this.towerConfigs.get(towerId);
+    if (!slot || !config) return 0;
+    return towerStats(config, 0, heightBonus(slot, this.config.heightBonus)).range;
+  }
+
+  /** Coût de la prochaine amélioration, ou null au niveau maximal. */
+  nextUpgradeCost(tower: Tower): number | null {
+    if (tower.level >= this.config.upgrades.maxLevel) return null;
+    return upgradeCost(tower.config, tower.level + 1, this.config.upgrades);
+  }
+
+  /** Caractéristiques qu'aurait la tourelle après la prochaine amélioration. */
+  nextLevelStats(tower: Tower) {
+    if (tower.level >= this.config.upgrades.maxLevel) return null;
+    return towerStats(tower.config, tower.level + 1, tower.heightBonus);
+  }
+
+  sellValue(tower: Tower): number {
+    return sellValue(tower.invested, this.config.economy);
   }
 
   /** Renvoie les événements survenus depuis le dernier appel. */
@@ -207,20 +265,55 @@ export class Game {
     if (!canAfford(this._money, config.cost)) return 'insufficient-funds';
 
     this._money -= config.cost;
+    const bonus = heightBonus(slot, this.config.heightBonus);
     const tower: Tower = {
       id: this.nextId++,
       config,
       slotId,
       x: slot.x,
       y: slot.y,
+      level: 0,
+      invested: config.cost,
+      heightBonus: bonus,
+      ...towerStats(config, 0, bonus),
       cooldown: 0,
       angle: -Math.PI / 2,
       targetId: null,
     };
     this.towers.push(tower);
     this.towerBySlot.set(slotId, tower);
+    this.towerById.set(tower.id, tower);
     this.events.push({ type: 'towerPlaced', towerId: tower.id, slotId, towerType: config.id });
     return 'ok';
+  }
+
+  upgradeTower(towerId: number): UpgradeTowerResult {
+    if (this._phase !== 'running') return 'game-over';
+    const tower = this.towerById.get(towerId);
+    if (!tower) return 'unknown-tower';
+    const cost = this.nextUpgradeCost(tower);
+    if (cost === null) return 'max-level';
+    if (!canAfford(this._money, cost)) return 'insufficient-funds';
+    this._money -= cost;
+    tower.level++;
+    tower.invested += cost;
+    Object.assign(tower, towerStats(tower.config, tower.level, tower.heightBonus));
+    this.events.push({ type: 'towerUpgraded', towerId, level: tower.level, cost });
+    return 'ok';
+  }
+
+  /** Revend une tourelle ; renvoie la somme rendue, ou null si impossible. */
+  sellTower(towerId: number): number | null {
+    if (this._phase !== 'running') return null;
+    const tower = this.towerById.get(towerId);
+    if (!tower) return null;
+    const refund = this.sellValue(tower);
+    this._money += refund;
+    this.towers.splice(this.towers.indexOf(tower), 1);
+    this.towerBySlot.delete(tower.slotId);
+    this.towerById.delete(tower.id);
+    this.events.push({ type: 'towerSold', towerId, slotId: tower.slotId, refund, x: tower.x, y: tower.y });
+    return refund;
   }
 
   /** La prochaine vague peut être appelée en avance pendant le compte à rebours. */
@@ -249,6 +342,7 @@ export class Game {
       if (this._countdown <= 0) this.launchNextWave();
     }
     this.updateSpawns(dt);
+    this.updateFields();
     this.updateEnemies(dt);
     if (this._phase !== 'running') return;
     this.updateTowers(dt);
@@ -272,7 +366,7 @@ export class Game {
       return;
     }
     const number = ++this._wavesLaunched;
-    const plan = buildWavePlan(number, this.config.waves, this.rng);
+    const plan = buildWavePlan(number, this.config.waves, this.rng, this.mapFactor);
     this.activeWaves.push({
       number,
       queue: plan.enemies,
@@ -283,7 +377,7 @@ export class Game {
       pending: plan.enemies.length,
     });
     this._countdown = null;
-    this.events.push({ type: 'waveStarted', wave: number });
+    this.events.push({ type: 'waveStarted', wave: number, boss: plan.enemies.includes(this.config.waves.boss) });
   }
 
   private updateSpawns(dt: number): void {
@@ -291,7 +385,13 @@ export class Game {
       if (wave.nextIndex >= wave.queue.length) continue;
       wave.spawnTimer -= dt;
       while (wave.spawnTimer <= 0 && wave.nextIndex < wave.queue.length) {
-        this.spawnEnemy(wave, wave.queue[wave.nextIndex]!, -wave.spawnTimer);
+        const config = this.enemyConfigs.get(wave.queue[wave.nextIndex]!);
+        if (!config) throw new Error(`Ennemi inconnu : ${wave.queue[wave.nextIndex]}`);
+        const pathIndex = this.spawnCount++ % this.paths.length;
+        const enemy = this.spawnEnemy(wave, config, pathIndex, config.speed * -wave.spawnTimer);
+        if (config.id === this.config.waves.boss) {
+          this.events.push({ type: 'bossSpawned', enemyId: enemy.id, wave: wave.number });
+        }
         wave.nextIndex++;
         wave.spawnTimer += wave.spawnInterval;
       }
@@ -307,10 +407,7 @@ export class Game {
     }
   }
 
-  private spawnEnemy(wave: ActiveWave, typeId: string, headStart: number): void {
-    const config = this.enemyConfigs.get(typeId);
-    if (!config) throw new Error(`Ennemi inconnu : ${typeId}`);
-    const pathIndex = this.spawnCount++ % this.paths.length;
+  private spawnEnemy(wave: ActiveWave, config: EnemyConfig, pathIndex: number, distance: number): Enemy {
     const hp = scaledHp(config.hp, wave.hpMultiplier);
     const max = this.config.waves.laneOffsetMax;
     const enemy: Enemy = {
@@ -318,11 +415,12 @@ export class Game {
       config,
       wave: wave.number,
       pathIndex,
-      distance: config.speed * headStart,
+      distance,
       remaining: 0,
       offset: max > 0 ? this.rng.range(-max, max) : 0,
       hp,
       maxHp: hp,
+      slow: 0,
       x: 0,
       y: 0,
       prevX: 0,
@@ -336,6 +434,7 @@ export class Game {
     enemy.prevY = enemy.y;
     this.enemies.push(enemy);
     this.enemyById.set(enemy.id, enemy);
+    return enemy;
   }
 
   private positionEnemy(enemy: Enemy): void {
@@ -348,12 +447,31 @@ export class Game {
     enemy.remaining = path.length - enemy.distance;
   }
 
+  /** Champs des purificateurs : chaque virus subit le plus fort ralentissement qui le touche. */
+  private updateFields(): void {
+    for (const enemy of this.enemies) enemy.slow = 0;
+    for (const tower of this.towers) {
+      if (tower.config.attack !== 'field') continue;
+      const r2 = tower.range * tower.range;
+      let any = false;
+      for (const enemy of this.enemies) {
+        if (!enemy.alive) continue;
+        const dx = enemy.x - tower.x;
+        const dy = enemy.y - tower.y;
+        if (dx * dx + dy * dy > r2) continue;
+        if (tower.slow > enemy.slow) enemy.slow = tower.slow;
+        any = true;
+      }
+      tower.targetId = any ? 0 : null;
+    }
+  }
+
   private updateEnemies(dt: number): void {
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
       enemy.prevX = enemy.x;
       enemy.prevY = enemy.y;
-      enemy.distance += enemy.config.speed * dt;
+      enemy.distance += enemy.config.speed * (1 - enemy.slow) * dt;
       const path = this.paths[enemy.pathIndex]!;
       if (enemy.distance >= path.length) {
         this.enemyReachedBase(enemy);
@@ -378,8 +496,9 @@ export class Game {
 
   private updateTowers(dt: number): void {
     for (const tower of this.towers) {
+      if (tower.config.attack === 'field') continue;
       tower.cooldown -= dt;
-      const target = selectTarget(tower.x, tower.y, tower.config.range, this.enemies);
+      const target = selectTarget(tower.x, tower.y, tower.range, this.enemies);
       tower.targetId = target ? target.id : null;
       if (!target) {
         if (tower.cooldown < 0) tower.cooldown = 0;
@@ -387,9 +506,24 @@ export class Game {
       }
       tower.angle = Math.atan2(target.y - tower.y, target.x - tower.x);
       if (tower.cooldown > 0) continue;
-      this.fire(tower, target);
-      tower.cooldown = Math.max(0, tower.cooldown + tower.config.fireInterval);
+      if (tower.config.attack === 'beam') this.fireBeam(tower, target);
+      else this.fire(tower, target);
+      tower.cooldown = Math.max(0, tower.cooldown + tower.fireInterval);
     }
+  }
+
+  /** Rayon instantané (laser UV). */
+  private fireBeam(tower: Tower, target: Enemy): void {
+    this.events.push({
+      type: 'beam',
+      towerId: tower.id,
+      towerType: tower.config.id,
+      fromX: tower.x,
+      fromY: tower.y,
+      toX: target.x,
+      toY: target.y,
+    });
+    this.damageEnemy(target, tower.damage);
   }
 
   private fire(tower: Tower, target: Enemy): void {
@@ -415,7 +549,7 @@ export class Game {
       targetX: target.x,
       targetY: target.y,
       speed: config.projectileSpeed,
-      damage: config.damage,
+      damage: tower.damage,
       splashRadius: config.splashRadius,
       traveled: 0,
       alive: true,
@@ -427,7 +561,7 @@ export class Game {
       if (!p.alive) continue;
       p.prevX = p.x;
       p.prevY = p.y;
-      // Obus à tête chercheuse : suit sa cible tant qu'elle vit, sinon finit sa course.
+      // Projectile à tête chercheuse : suit sa cible tant qu'elle vit, sinon finit sa course.
       const target = this.enemyById.get(p.targetId);
       if (target && target.alive) {
         p.targetX = target.x;
@@ -451,7 +585,7 @@ export class Game {
     }
   }
 
-  /** Arrivée d'un projectile : une cible (bulle) ou toute une zone (ballon d'eau). */
+  /** Arrivée d'un projectile : une cible (gouttelette) ou toute une zone (nuage du diffuseur). */
   private impact(p: Projectile, target: Enemy | undefined): void {
     this.events.push({ type: 'impact', towerType: p.towerType, x: p.x, y: p.y, radius: p.splashRadius });
     if (p.splashRadius > 0) {
@@ -480,10 +614,29 @@ export class Game {
       y: enemy.y,
       reward: enemy.config.reward,
     });
+    this.split(enemy);
     this.resolveEnemy(enemy);
   }
 
-  /** Un ennemi a quitté le jeu (tué ou arrivé à la base) : on met à jour sa vague. */
+  /** Le Méga-virus neutralisé se divise : ses fragments repartent de l'endroit où il était. */
+  private split(enemy: Enemy): void {
+    const childId = enemy.config.splitInto;
+    const count = enemy.config.splitCount ?? 0;
+    const config = childId === undefined ? undefined : this.enemyConfigs.get(childId);
+    const wave = this.activeWaves.find((w) => w.number === enemy.wave);
+    if (!config || count <= 0 || !wave) return;
+    wave.pending += count;
+    for (let i = 0; i < count; i++) {
+      const child = this.spawnEnemy(wave, config, enemy.pathIndex, Math.max(0, enemy.distance - i * 4));
+      child.offset = ((i - (count - 1) / 2) * this.config.waves.laneOffsetMax * 2) / Math.max(1, count - 1);
+      this.positionEnemy(child);
+      child.prevX = child.x;
+      child.prevY = child.y;
+    }
+    this.events.push({ type: 'enemySplit', enemyType: enemy.config.id, x: enemy.x, y: enemy.y, count });
+  }
+
+  /** Un ennemi a quitté le jeu (neutralisé ou arrivé à la base) : on met à jour sa vague. */
   private resolveEnemy(enemy: Enemy): void {
     const index = this.activeWaves.findIndex((w) => w.number === enemy.wave);
     if (index < 0) return;

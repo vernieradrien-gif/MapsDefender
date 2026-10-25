@@ -1,14 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "simulation": {
     "stepsPerSecond": 60,
     "maxFrameSeconds": 0.25,
     "maxStepsPerFrame": 12,
-    "speeds": [
-      1,
-      2,
-      3
-    ]
+    "speeds": [1, 2, 3]
   },
   "base": {
     "hp": 20
@@ -16,11 +12,17 @@
   "economy": {
     "startMoney": 200,
     "waveBonusBase": 10,
-    "waveBonusPerWave": 2
+    "waveBonusPerWave": 2,
+    "sellRefund": 0.7
   },
   "score": {
     "perWaveCleared": 50,
     "perBaseHpOnVictory": 100
+  },
+  "mapScaling": {
+    "referenceRouteLength": 600,
+    "minFactor": 0.75,
+    "maxFactor": 1.5
   },
   "waves": {
     "total": 30,
@@ -28,75 +30,94 @@
     "interWaveSeconds": 6,
     "hpGrowth": 1.12,
     "countBase": 6,
-    "countPerWave": 0.8,
+    "countPerWave": 0.9,
     "spawnIntervalStart": 0.9,
     "spawnIntervalPerWave": -0.015,
     "spawnIntervalMin": 0.45,
     "laneOffsetMax": 2.5,
+    "bossEvery": 10,
+    "boss": "megavirus",
     "composition": [
-      {
-        "enemy": "glouton",
-        "fromWave": 1,
-        "weight": 4
-      },
-      {
-        "enemy": "filou",
-        "fromWave": 3,
-        "weight": 2
-      },
-      {
-        "enemy": "bouboule",
-        "fromWave": 5,
-        "weight": 1
-      }
+      { "enemy": "virus", "fromWave": 1, "weight": 4 },
+      { "enemy": "variant", "fromWave": 3, "weight": 2 },
+      { "enemy": "amas", "fromWave": 5, "weight": 1.2 },
+      { "enemy": "blinde", "fromWave": 8, "weight": 0.4 }
     ]
   },
   "enemies": [
+    { "id": "virus", "hp": 20, "speed": 35, "reward": 8, "baseDamage": 1, "score": 10 },
+    { "id": "variant", "hp": 12, "speed": 58, "reward": 7, "baseDamage": 1, "score": 10 },
+    { "id": "amas", "hp": 60, "speed": 38, "reward": 15, "baseDamage": 2, "score": 30 },
+    { "id": "blinde", "hp": 200, "speed": 21, "reward": 35, "baseDamage": 5, "score": 80 },
     {
-      "id": "glouton",
-      "hp": 20,
-      "speed": 30,
-      "reward": 6,
-      "baseDamage": 1,
-      "score": 10
-    },
-    {
-      "id": "filou",
-      "hp": 12,
-      "speed": 48,
-      "reward": 5,
-      "baseDamage": 1,
-      "score": 10
-    },
-    {
-      "id": "bouboule",
-      "hp": 60,
-      "speed": 36,
-      "reward": 12,
-      "baseDamage": 2,
-      "score": 30
+      "id": "megavirus",
+      "hp": 800,
+      "speed": 16,
+      "reward": 40,
+      "baseDamage": 5,
+      "score": 300,
+      "splitInto": "amas",
+      "splitCount": 3
     }
   ],
   "towers": [
     {
-      "id": "bulles",
+      "id": "pulverisateur",
+      "attack": "projectile",
       "cost": 50,
       "range": 50,
       "damage": 6,
       "fireInterval": 0.2,
       "projectileSpeed": 150,
-      "splashRadius": 0
+      "splashRadius": 0,
+      "slow": 0,
+      "perLevel": { "damage": 0.6, "range": 0.06, "fireRate": 0.15, "slow": 0 }
     },
     {
-      "id": "ballons",
+      "id": "diffuseur",
+      "attack": "projectile",
       "cost": 100,
       "range": 58,
       "damage": 30,
       "fireInterval": 1.4,
       "projectileSpeed": 90,
-      "splashRadius": 20
+      "splashRadius": 20,
+      "slow": 0,
+      "perLevel": { "damage": 0.6, "range": 0.06, "fireRate": 0.15, "slow": 0 }
+    },
+    {
+      "id": "laser",
+      "attack": "beam",
+      "cost": 150,
+      "range": 95,
+      "damage": 85,
+      "fireInterval": 2.4,
+      "projectileSpeed": 0,
+      "splashRadius": 0,
+      "slow": 0,
+      "perLevel": { "damage": 0.6, "range": 0.06, "fireRate": 0.15, "slow": 0 }
+    },
+    {
+      "id": "purificateur",
+      "attack": "field",
+      "cost": 75,
+      "range": 42,
+      "damage": 0,
+      "fireInterval": 0,
+      "projectileSpeed": 0,
+      "splashRadius": 0,
+      "slow": 0.4,
+      "perLevel": { "damage": 0, "range": 0.1, "fireRate": 0, "slow": 0.05 }
     }
   ],
+  "upgrades": {
+    "maxLevel": 3,
+    "costGrowth": 1.6
+  },
+  "heightBonus": {
+    "rangePerMeter": 0.012,
+    "maxBonus": 0.25
+  },
   "mapRules": {
     "slotMinDistanceFromPath": 10,
     "slotMinSpacing": 28,
@@ -109,6 +130,44 @@
     "minSlots": 25,
     "maxSlots": 60,
     "baseMaxDistanceFromPathEnd": 1
+  },
+  "osm": {
+    "zoneWidth": 350,
+    "zoneHeight": 660,
+    "decorMargin": 70,
+    "entryMargin": 1.5,
+    "streetWidths": {
+      "primary": 12,
+      "secondary": 11,
+      "tertiary": 10,
+      "unclassified": 8,
+      "residential": 7.5,
+      "living_street": 6
+    },
+    "graphTolerance": 0.5,
+    "mergeDistance": 8,
+    "minDeadEnd": 30,
+    "simplifyTolerance": 3,
+    "drawTolerance": 0.5,
+    "footprintTolerance": 0.3,
+    "buildingMinArea": 6,
+    "annexMaxArea": 25,
+    "houseMaxArea": 250,
+    "commercialMinArea": 1500,
+    "levelHeight": 3,
+    "defaultHeights": { "house": 6, "apartments": 12, "public": 9, "commercial": 7, "annex": 2.6 },
+    "gableMinRectangularity": 0.88,
+    "baseProximity": 80,
+    "baseMaxStreetDistance": 60,
+    "paletteCount": 6,
+    "trees": {
+      "density": 40,
+      "parkDensity": 60,
+      "woodDensity": 220,
+      "spacing": 7,
+      "radius": [2.6, 4.2],
+      "paletteCount": 4
+    }
   },
   "debug": {
     "startMoney": 5000

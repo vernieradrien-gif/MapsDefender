@@ -1,7 +1,7 @@
 import type { MapRulesConfig } from '../config';
 import { PreparedPath, distanceToPolyline } from '../game/path';
 import type { Area, Bounds, Building, MapPath, Street, TowerSlot, Vec2 } from '../game/types';
-import { distanceToPolygon, polygonCentroid } from './geometry';
+import { distanceToPolygon, interiorPoint } from './geometry';
 
 export interface SlotInput {
   paths: readonly MapPath[];
@@ -43,9 +43,10 @@ export function placeTowerSlots(input: SlotInput, rules: MapRulesConfig): TowerS
     if (padOk(spot)) add({ x: spot.x, y: spot.y, kind: 'pad', elevation: rules.padElevation, buildingId: null });
   }
 
-  // 1. Toits.
+  // 1. Toits (au milieu du toit, même pour un bâtiment en L ou en U).
   const roofs = input.buildings
-    .map((building) => ({ building, center: polygonCentroid(building.footprint) }))
+    .filter((building) => building.kind !== 'annex')
+    .map((building) => ({ building, center: interiorPoint(building.footprint) }))
     .map((r) => ({ ...r, distance: pathDistance(r.center) }))
     .filter((r) => r.distance <= rules.roofMaxDistanceFromPath && inBounds(r.center))
     .filter((r) => Math.hypot(r.center.x - input.base.x, r.center.y - input.base.y) >= rules.slotMinSpacing)

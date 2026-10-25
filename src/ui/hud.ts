@@ -9,7 +9,7 @@ export interface HudHandlers {
   onPause(): void;
 }
 
-/** Barre haute (pièces, parts de gâteau, vague, pause) et barre basse (vague suivante, vitesse). */
+/** Barre haute (crédits, PV de la base, vague, pause) et barre basse (vague suivante, vitesse). */
 export class Hud {
   readonly top: HTMLElement;
   readonly bottom: HTMLElement;
@@ -33,7 +33,7 @@ export class Hud {
       return { node, value };
     };
     this.money = stat('stat-money', icons.coin, t('hud.money')).value;
-    const hp = stat('stat-hp', icons.cake, t('hud.base'));
+    const hp = stat('stat-hp', icons.base, t('hud.base'));
     this.hp = hp.value;
     this.hpStat = hp.node;
     this.wave = stat('stat-wave', icons.flag, t('hud.wave')).value;

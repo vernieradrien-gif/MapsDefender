@@ -5,8 +5,8 @@
   --glass-strong: rgba(255, 255, 255, 0.95);
   --line: rgba(43, 45, 66, 0.08);
   --shadow: 0 6px 20px rgba(41, 64, 90, 0.16), 0 1px 3px rgba(41, 64, 90, 0.12);
-  --coral: #ff7a59;
-  --pink: #ff5d8f;
+  --coral: #2bb3a6;
+  --pink: #2a8fd0;
   --teal: #3cc6cc;
   --gold: #ffc93c;
   --danger: #ff5a6e;
@@ -26,7 +26,7 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #cfe6ad;
+  background: #d3e6b5;
   color: var(--ink);
   font-family: var(--font);
   overscroll-behavior: none;
@@ -178,7 +178,7 @@ body {
 .button-primary {
   background: linear-gradient(135deg, var(--coral), var(--pink));
   color: #fff;
-  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.14), 0 6px 16px rgba(255, 93, 143, 0.35);
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.14), 0 6px 16px rgba(43, 179, 166, 0.35);
 }
 
 .button-primary:disabled {
@@ -274,9 +274,10 @@ body {
 .radial-label {
   position: absolute;
   top: calc(100% + 12px);
+  text-align: center;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   padding: 2px 8px;
@@ -293,6 +294,79 @@ body {
 .radial-item.unaffordable .radial-price {
   background: #e3e5ec;
   color: var(--danger);
+}
+
+.radial-label small {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.1;
+}
+
+.radial-icon-small svg {
+  width: 34px;
+  height: 34px;
+  margin-top: -2px;
+}
+
+.radial-price-refund {
+  background: #d9f5e3;
+  color: #1e7a45;
+}
+
+.tower-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  max-width: 220px;
+  padding: 7px 12px;
+  border-radius: 14px;
+  background: var(--glass-strong);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+  animation: pop 0.18s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.tower-card strong {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tower-card small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.map-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.attribution {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.fallback-note {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: #ffe3e6;
+  color: #9a2233;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 /* --- Message bref --------------------------------------------------------- */
@@ -431,7 +505,7 @@ body {
   }
 }
 
-.end-cake {
+.end-base {
   width: 84px !important;
   height: 84px !important;
 }
@@ -465,13 +539,56 @@ body {
 }
 
 .start-towers {
-  display: flex;
-  gap: 10px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }
 
-.start-towers svg {
-  width: 52px;
-  height: 52px;
+.start-tower {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 14px;
+  background: #f5f6fa;
+  text-align: left;
+}
+
+.start-tower svg {
+  width: 38px;
+  height: 38px;
+  flex: none;
+}
+
+.start-tower span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.start-tower strong {
+  font-size: 13px;
+}
+
+.start-tower small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.start-tower em {
+  position: absolute;
+  top: -5px;
+  right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #6b4a00;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .debug-note {
