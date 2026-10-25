@@ -59,4 +59,8 @@ npm run build    # vérification TypeScript (code + scripts) + build de producti
 npm run import-map  # réimporte la carte réelle (--offline : rejoue scripts/.cache)
 npm run simulate    # équilibrage : parties automatiques sur 20 quartiers types
 npm run captures    # captures Playwright (Pixel 7) dans docs/captures/
+npx cap sync android                   # après le build : copie dist/ dans le projet Android
+cd android && ./gradlew assembleDebug  # APK de test (JDK 21 + SDK Android) ; la CI le construit aussi
 ```
+
+Publicités : identifiants AdMob de **test** uniquement (`src/ads/admob.ts`, `android/app/src/main/AndroidManifest.xml`).

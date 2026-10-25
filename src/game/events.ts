@@ -23,4 +23,5 @@ export type GameEvent =
   | { type: 'enemySplit'; enemyType: string; x: number; y: number; count: number }
   | { type: 'bossSpawned'; enemyId: number; wave: number }
   | { type: 'baseHit'; damage: number; baseHp: number }
+  | { type: 'revived'; baseHp: number }
   | { type: 'gameOver'; victory: boolean; score: number };

@@ -244,14 +244,16 @@ export interface Route {
 /**
  * Itinéraires des virus : le plus court chemin depuis chaque entrée, puis des
  * itinéraires supplémentaires (sans repasser par un même carrefour) jusqu'à ce
- * que chaque tronçon soit emprunté par au moins un itinéraire. Un tronçon
- * qu'aucun itinéraire simple ne peut emprunter (impasse, boucle accrochée par
- * un seul carrefour) est renvoyé dans `uncovered`.
+ * que chaque tronçon (de `required`, par défaut tous) soit emprunté par au
+ * moins un itinéraire. Un tronçon qu'aucun itinéraire simple ne peut
+ * emprunter (impasse, boucle accrochée par un seul carrefour) est renvoyé
+ * dans `uncovered`.
  */
 export function coverRoutes(
   graph: StreetGraph,
   entryNodes: readonly number[],
   base: number,
+  required: (edge: GraphEdge) => boolean = () => true,
 ): { routes: Route[]; uncovered: number[] } {
   const entries = [...new Set(entryNodes)].filter((e) => e !== base);
   const routes: Route[] = [];
@@ -277,7 +279,7 @@ export function coverRoutes(
   // Les tronçons les plus éloignés de la base d'abord : leurs itinéraires en couvrent d'autres au passage.
   const order = [...graph.edges].sort((x, y) => baseDistance(y) - baseDistance(x) || x.id - y.id);
   for (const edge of order) {
-    if (covered.has(edge.id)) continue;
+    if (covered.has(edge.id) || !required(edge)) continue;
     let best: { entry: number; nodes: number[]; edges: number[]; length: number } | null = null;
     for (const entry of entries) {
       for (const [from, to] of [[edge.a, edge.b], [edge.b, edge.a]] as const) {

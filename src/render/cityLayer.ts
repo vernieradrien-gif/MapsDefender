@@ -1,5 +1,5 @@
 import { Rng } from '../game/rng';
-import type { Area, Building, EntryMarker, GameMap, Tree, Vec2 } from '../game/types';
+import type { Area, Bounds, Building, EntryMarker, GameMap, Tree, Vec2 } from '../game/types';
 import { interiorPoint, isConvex, minimumBoundingRect, outwardNormal, polygonArea, signedArea } from '../geo/geometry';
 import type { Camera } from './camera';
 import { pickColor, shade, theme } from './theme';
@@ -18,6 +18,8 @@ export interface CityView {
   /** Canvas de travail pour les ombres (même taille que la cible). */
   shadowCanvas: HTMLCanvasElement;
   dpr: number;
+  /** Partie visible du monde : seul ce qui s'y trouve est dessiné (carte zoomée). */
+  visible?: Bounds;
 }
 
 /** Décalage vertical à l'écran (px) d'un point situé à `h` mètres de hauteur. */
@@ -32,8 +34,36 @@ export function hasGableRoof(b: Building): boolean {
   return polygonArea(b.footprint) / minimumBoundingRect(b.footprint).area > 0.85;
 }
 
-export function drawCity(view: CityView, map: GameMap): void {
+const boxes = new WeakMap<object, Bounds>();
+
+/** Rectangle englobant (mis en cache) d'un objet du décor. */
+function boxOf(key: object, pts: readonly Vec2[]): Bounds {
+  let box = boxes.get(key);
+  if (!box) {
+    box = bbox(pts);
+    boxes.set(key, box);
+  }
+  return box;
+}
+
+/** Ne garde que les objets visibles (avec une marge pour la hauteur des bâtiments et les ombres). */
+function visiblePart(map: GameMap, v: Bounds | undefined): GameMap {
+  if (!v) return map;
+  const margin = 30;
+  const seen = (b: Bounds) =>
+    b.maxX >= v.minX - margin && b.minX <= v.maxX + margin && b.maxY >= v.minY - margin && b.minY <= v.maxY + margin;
+  return {
+    ...map,
+    buildings: map.buildings.filter((b) => seen(boxOf(b, b.footprint))),
+    trees: map.trees.filter((t) => seen({ minX: t.x, maxX: t.x, minY: t.y, maxY: t.y })),
+    streets: map.streets.filter((s) => seen(boxOf(s, s.points))),
+    areas: map.areas.filter((a) => seen(boxOf(a, a.polygon))),
+  };
+}
+
+export function drawCity(view: CityView, fullMap: GameMap): void {
   const { ctx } = view;
+  const map = visiblePart(fullMap, view.visible);
   drawGround(view, map);
   for (const area of map.areas) if (area.kind === 'park') drawPark(view, area, map);
   for (const area of map.areas) if (area.kind === 'wood') drawWood(view, area);

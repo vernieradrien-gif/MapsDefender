@@ -14,6 +14,9 @@ export interface BuildingColors {
 export const theme = {
   font: "'Fredoka Variable', 'Fredoka', system-ui, sans-serif",
 
+  /** Zoom maximal (× la carte entière) et marge visible au-delà de la carte quand on est zoomé (m). */
+  camera: { maxZoom: 4, overscroll: 50 },
+
   /** Hauteur projetée : 1 m de hauteur = heightFactor m vers le haut de l'écran. */
   heightFactor: 0.5,
   /** Ombre portée par mètre de hauteur (m au sol). */

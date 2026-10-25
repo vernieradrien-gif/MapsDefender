@@ -98,7 +98,8 @@ async function main(): Promise<void> {
   const errors = validateMap(map, config.mapRules);
 
   console.log(`Base : ${report.baseName ?? 'bâtiment sans nom'}`);
-  console.log(`Entrées : ${report.entries}, itinéraires : ${report.routes}`);
+  const { N, S, E, O } = report.sides;
+  console.log(`Entrées : ${report.entries} (nord ${N}, sud ${S}, est ${E}, ouest ${O}), itinéraires : ${report.routes}`);
   console.log(`Longueur moyenne des itinéraires : ${report.averageRouteLength.toFixed(0)} m`);
   console.log(
     `Réseau : ${report.coveredEdges}/${report.totalEdges} tronçons empruntés ` +

@@ -175,6 +175,10 @@ export interface OsmRulesConfig {
   zoneHeight: number;
   /** Décor dessiné autour de la zone (m). */
   decorMargin: number;
+  /** Abords pris dans le réseau des rues (m) : liaisons par l'extérieur et rues d'entrée. */
+  graphMargin: number;
+  /** Les virus apparaissent à cette distance avant d'entrer dans la carte (m). */
+  entryLead: number;
   /** Une extrémité de rue à moins de cette distance du bord est une entrée (m). */
   entryMargin: number;
   /** Largeur de chaussée (m) par type de voie OSM. */
@@ -209,6 +213,38 @@ export interface OsmRulesConfig {
   trees: TreeRules;
 }
 
+/** Amélioration permanente achetée avec des gemmes. */
+export interface PermanentUpgradeConfig {
+  id: string;
+  maxLevel: number;
+  /** Coût en gemmes de chaque niveau (costs[0] = niveau 1). */
+  costs: number[];
+  /** Effet par niveau (proportion, crédits ou nombre selon l'amélioration). */
+  effect: number;
+  /** Niveau d'une autre amélioration à atteindre d'abord (arbre), ou null. */
+  requires: { id: string; level: number } | null;
+}
+
+export interface ProgressionConfig {
+  /** Gemmes d'une partie = gemFactor × √score (arrondi à l'inférieur) : le score grimpe très vite avec les vagues, les gemmes plus régulièrement. */
+  gemFactor: number;
+  upgrades: PermanentUpgradeConfig[];
+}
+
+/** Publicités (identifiants de test uniquement, jamais pendant une vague). */
+export interface AdsConfig {
+  /** PV de la base après « Continuer » (pub récompensée, une fois par partie). */
+  continueHp: number;
+  /** Gemmes multipliées par cette valeur après la pub de fin de partie. */
+  gemsMultiplier: number;
+  /** Crédits gagnés multipliés pendant la vague boostée. */
+  boostMultiplier: number;
+  /** Écart minimal entre deux interstitiels (s). */
+  interstitialMinSeconds: number;
+  /** Durée de la fausse publicité sur le web (s). */
+  fakeAdSeconds: number;
+}
+
 export interface GameConfig {
   version: number;
   simulation: SimulationConfig;
@@ -223,6 +259,8 @@ export interface GameConfig {
   heightBonus: HeightBonusConfig;
   mapRules: MapRulesConfig;
   osm: OsmRulesConfig;
+  progression: ProgressionConfig;
+  ads: AdsConfig;
   debug: { startMoney: number };
 }
 
@@ -329,9 +367,29 @@ export function validateConfig(config: GameConfig): string[] {
   const o = config.osm;
   positive(o.zoneWidth, 'osm.zoneWidth');
   positive(o.zoneHeight, 'osm.zoneHeight');
+  positive(o.entryLead, 'osm.entryLead');
+  if (!(o.graphMargin >= o.entryLead)) errors.push('osm.graphMargin doit être >= entryLead');
+  if (!(o.decorMargin >= o.entryLead)) errors.push('osm.decorMargin doit être >= entryLead (les virus marchent sur des rues dessinées)');
   positive(o.levelHeight, 'osm.levelHeight');
   for (const [kind, h] of Object.entries(o.defaultHeights)) positive(h, `osm.defaultHeights.${kind}`);
   ratio(o.gableMinRectangularity, 'osm.gableMinRectangularity');
+
+  const p = config.progression;
+  positive(p.gemFactor, 'progression.gemFactor');
+  const upgradeIds = new Set(p.upgrades.map((u) => u.id));
+  for (const u of p.upgrades) {
+    if (u.costs.length !== u.maxLevel) errors.push(`progression.${u.id} : un coût par niveau`);
+    u.costs.forEach((c, i) => positive(c, `progression.${u.id}.costs[${i}]`));
+    if (u.requires && (!upgradeIds.has(u.requires.id) || u.requires.id === u.id)) {
+      errors.push(`progression.${u.id}.requires invalide`);
+    }
+  }
+  const a = config.ads;
+  positive(a.continueHp, 'ads.continueHp');
+  if (a.continueHp > config.base.hp) errors.push('ads.continueHp doit être <= base.hp');
+  positive(a.gemsMultiplier, 'ads.gemsMultiplier');
+  positive(a.boostMultiplier, 'ads.boostMultiplier');
+  nonNegative(a.interstitialMinSeconds, 'ads.interstitialMinSeconds');
   return errors;
 }
 

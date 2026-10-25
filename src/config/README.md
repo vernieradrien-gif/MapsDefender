@@ -126,9 +126,11 @@ Construction d'une carte à partir d'OpenStreetMap (`npm run import-map`) ou d'u
 
 | Champ | Rôle |
 |---|---|
-| `zoneWidth`, `zoneHeight` | Zone de jeu (m), centrée sur le lieu (350 × 660, portrait). |
-| `decorMargin` | Décor dessiné autour de la zone (m). |
-| `entryMargin` | Une extrémité de rue à moins de cette distance du bord de la zone est une entrée (m). |
+| `zoneWidth`, `zoneHeight` | Zone de jeu (m), centrée sur le lieu (500 × 900, portrait ; le joueur zoome pour voir le détail). |
+| `decorMargin` | Décor dessiné autour de la zone (m). Au moins `entryLead`, pour que l'arrivée des virus soit dessinée. |
+| `graphMargin` | Le réseau des rues est construit sur la zone plus cette marge (220 m) : les virus arrivent par les rues qui viennent de l'extérieur. Au moins `entryLead`. |
+| `entryLead` | Les virus apparaissent à cette distance avant le bord de la zone, sur la rue qui y entre (60 m). Une entrée est un bout du réseau élargi situé au moins à `entryLead` / 2 hors de la zone. |
+| `entryMargin` | Les nœuds du réseau à moins de cette distance du bord de la zone, ou au-delà, ne sont jamais fusionnés ni supprimés par la simplification (m). |
 | `streetWidths` | Largeur de chaussée (m) par type de voie OSM. |
 | `graphTolerance` | Distance sous laquelle deux extrémités de rues sont raccordées (m). |
 | `mergeDistance` | Deux carrefours reliés par un tronçon plus court sont fusionnés (8 m). |
@@ -145,6 +147,36 @@ Construction d'une carte à partir d'OpenStreetMap (`npm run import-map`) ou d'u
 | `baseMaxStreetDistance` | La base doit être à moins de cette distance d'une rue (m). |
 | `paletteCount` | Nombre de variantes de couleurs des bâtiments. |
 | `trees` | Arbres décoratifs : tentatives par hectare (`density`, `parkDensity`, `woodDensity`), écart minimal (`spacing`), rayon du feuillage (`radius`), variantes de couleurs (`paletteCount`). |
+
+## `progression`
+
+Monnaie permanente (gemmes) et arbre d'améliorations permanentes. L'équilibrage des vagues (`npm run simulate`) se fait sans ces bonus.
+
+| Champ | Rôle |
+|---|---|
+| `gemFactor` | Gemmes gagnées en fin de partie = ⌊`gemFactor` × √score⌋ (0,18 : 10 000 points → 18 gemmes). |
+| `upgrades` | Liste des améliorations : `id`, `maxLevel`, `costs` (prix en gemmes de chaque niveau, un par niveau), `effect` (effet par niveau), `requires` (prérequis `{ id, level }` ou `null`). |
+
+Effet selon l'`id` (les noms affichés sont dans `src/i18n/fr.json`, clés `upgrade.<id>.name`) :
+
+| `id` | Effet par niveau |
+|---|---|
+| `degats` | Dégâts de tous les dispositifs × (1 + `effect`) (0,05 = +5 %). |
+| `portee` | Portée × (1 + `effect`) (0,04 = +4 %). |
+| `credits` | `effect` crédits de plus au départ (après l'adaptation à la carte). |
+| `offert` | `effect` Pulvérisateur(s) que le joueur pose gratuitement (le prix revient à la normale ensuite). |
+
+## `ads`
+
+Effets des publicités récompensées et rythme des interstitiels. Jamais de publicité pendant une vague (règle du code, pas un réglage).
+
+| Champ | Rôle |
+|---|---|
+| `continueHp` | « Continuer » après une défaite (une fois par partie) : PV rendus à la base (10), sans dépasser `base.hp`. |
+| `gemsMultiplier` | « Doubler » en fin de partie : multiplicateur des gemmes gagnées (2). |
+| `boostMultiplier` | Boost proposé entre deux vagues : multiplicateur des crédits gagnés pendant la vague suivante (2). |
+| `interstitialMinSeconds` | Délai minimal entre deux interstitiels (180 s). Jamais après la première partie du jour. |
+| `fakeAdSeconds` | Durée de la fausse publicité affichée sur le web (3 s). |
 
 ## `debug`
 

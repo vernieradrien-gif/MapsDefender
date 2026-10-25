@@ -126,6 +126,41 @@ async function main(): Promise<void> {
     report.performance = { enemies, fps: Math.round(fps * 10) / 10, renderMs: Math.round(renderMs * 100) / 100 };
     await shot(page, '8-perf-150-virus');
 
+    // Zoom : deux crans de « + » pendant une vague.
+    await open(page, '?debug');
+    await hook(page, (h) => h.start());
+    await hook(page, (h) => h.autoBuild());
+    await hook(page, (h) => h.fastForward(16));
+    await page.getByRole('button', { name: 'Zoomer', exact: true }).click();
+    await page.getByRole('button', { name: 'Zoomer', exact: true }).click();
+    await page.waitForTimeout(300);
+    await shot(page, '9-zoom');
+
+    // Améliorations permanentes et paramètres, avec une progression déjà entamée.
+    await page.evaluate(() =>
+      localStorage.setItem(
+        'streetdefense:v1:progress',
+        JSON.stringify({ version: 1, gems: 64, upgrades: { degats: 2, credits: 1 }, records: { villagexpo: { bestWave: 17, bestScore: 52000, plays: 6, lastPlayed: '2026-10-25' } } }),
+      ),
+    );
+    await open(page, '');
+    await shot(page, '10-accueil-progression');
+    await page.getByRole('button', { name: 'Améliorations' }).click();
+    await page.waitForTimeout(300);
+    await shot(page, '11-ameliorations');
+    await page.getByRole('button', { name: 'Retour' }).click();
+    await page.getByRole('button', { name: 'Paramètres' }).click();
+    await page.getByRole('button', { name: 'Copier mon code' }).click();
+    await page.waitForTimeout(300);
+    await shot(page, '12-parametres');
+
+    // Publicité de test (web) : boost de crédits avant la première vague.
+    await open(page, '?debug');
+    await hook(page, (h) => h.start());
+    await page.getByRole('button', { name: /crédits/ }).click();
+    await page.waitForTimeout(400);
+    await shot(page, '13-pub-test');
+
     report.pageErrors = errors;
     await writeFile(join(outDir, 'rapport.json'), `${JSON.stringify(report, null, 2)}\n`);
     console.log(JSON.stringify(report, null, 2));

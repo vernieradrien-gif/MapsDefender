@@ -1,5 +1,5 @@
-// Accès au stockage local. Le jalon 3 y ajoutera la progression versionnée
-// (avec migrations) et le jalon 4 le cache des cartes (IndexedDB).
+// Accès au stockage local : la progression versionnée est dans progress.ts ;
+// le jalon 4 ajoutera le cache des cartes (IndexedDB).
 // localStorage peut être indisponible (navigation privée, données bloquées) :
 // chaque accès est protégé et le jeu fonctionne sans.
 
@@ -19,5 +19,13 @@ export function writeJSON(key: string, value: unknown): void {
     localStorage.setItem(PREFIX + key, JSON.stringify(value));
   } catch {
     // Stockage indisponible : on ignore, ce n'est qu'une préférence.
+  }
+}
+
+export function removeKey(key: string): void {
+  try {
+    localStorage.removeItem(PREFIX + key);
+  } catch {
+    // Stockage indisponible : rien à effacer.
   }
 }

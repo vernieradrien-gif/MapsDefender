@@ -17,12 +17,21 @@ export function heightBonus(slot: Pick<TowerSlot, 'kind' | 'elevation'>, cfg: He
   return Math.min(cfg.maxBonus, Math.max(0, slot.elevation) * cfg.rangePerMeter);
 }
 
-/** Caractéristiques effectives d'une tourelle à un niveau donné (0 = juste posée). */
-export function towerStats(config: TowerConfig, level: number, bonus: number): TowerStats {
+/**
+ * Caractéristiques effectives d'une tourelle à un niveau donné (0 = juste
+ * posée), avec le bonus de hauteur et les multiplicateurs des améliorations
+ * permanentes.
+ */
+export function towerStats(
+  config: TowerConfig,
+  level: number,
+  bonus: number,
+  boost: { damage: number; range: number } = { damage: 1, range: 1 },
+): TowerStats {
   const p = config.perLevel;
   return {
-    range: config.range * (1 + p.range * level) * (1 + bonus),
-    damage: config.damage * (1 + p.damage * level),
+    range: config.range * (1 + p.range * level) * (1 + bonus) * boost.range,
+    damage: config.damage * (1 + p.damage * level) * boost.damage,
     fireInterval: config.fireInterval / (1 + p.fireRate * level),
     slow: Math.min(1, config.slow + p.slow * level),
   };

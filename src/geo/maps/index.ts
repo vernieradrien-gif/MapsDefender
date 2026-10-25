@@ -19,9 +19,15 @@ export function villagexpoMap(): GameMap {
   return (villagexpo as unknown as { map: GameMap }).map;
 }
 
-/** Carte à jouer : Villagexpo, ou la carte de démonstration (`demo`, ou si Villagexpo est invalide). */
-export function loadGameMap(rules: MapRulesConfig, options: { demo?: boolean } = {}): LoadedMap {
-  if (options.demo) return { map: createFixedMap(rules), fallback: false, errors: [] };
+/** Cartes proposées sur l'accueil : la carte réelle d'abord, puis la démonstration. */
+export const MAP_IDS = ['villagexpo', 'fixed-demo'] as const;
+
+/**
+ * Carte à jouer : Villagexpo (par défaut), ou la carte de démonstration
+ * (`demo`, identifiant `fixed-demo`, ou si Villagexpo est invalide).
+ */
+export function loadGameMap(rules: MapRulesConfig, options: { demo?: boolean; id?: string } = {}): LoadedMap {
+  if (options.demo || options.id === 'fixed-demo') return { map: createFixedMap(rules), fallback: false, errors: [] };
   const map = villagexpoMap();
   const errors = validateMap(map, rules);
   if (errors.length === 0) return { map, fallback: false, errors };

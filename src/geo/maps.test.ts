@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { testConfig } from '../game/__tests__/helpers';
 import { validateMap } from '../game/mapValidation';
+import { distanceToPolyline } from '../game/path';
 import { averageRouteLength } from '../game/scaling';
 import type { Building, Street } from '../game/types';
 import { isConvex, orientedRect } from './geometry';
@@ -32,17 +33,24 @@ describe('carte réelle : Villagexpo (Saint-Michel-sur-Orge)', () => {
     expect(map.attribution).toBe('© OpenStreetMap contributors');
   });
 
-  it('les itinéraires partent des entrées, au bord de la zone, et finissent à la base', () => {
+  it('les virus arrivent de l’extérieur, par des rues qui sortent de la carte, de plusieurs côtés', () => {
     const { minX, minY, maxX, maxY } = map.bounds;
+    const outside = (p: { x: number; y: number }) => p.x < minX || p.x > maxX || p.y < minY || p.y > maxY;
     for (const e of map.entries) {
       expect(Math.min(e.x - minX, maxX - e.x, e.y - minY, maxY - e.y)).toBeLessThan(2);
     }
     for (const path of map.paths) {
-      const first = path.points[0]!;
-      const last = path.points[path.points.length - 1]!;
-      expect(map.entries.some((e) => e.x === first.x && e.y === first.y)).toBe(true);
-      expect(last).toEqual(map.base);
+      expect(outside(path.points[0]!)).toBe(true);
+      expect(map.entries.some((e) => distanceToPolyline(e, path.points) < 0.5)).toBe(true);
+      expect(path.points[path.points.length - 1]).toEqual(map.base);
     }
+    const sides = new Set(
+      map.entries.map((e) => {
+        const d = [e.x - minX, maxX - e.x, e.y - minY, maxY - e.y];
+        return d.indexOf(Math.min(...d));
+      }),
+    );
+    expect(sides.size).toBeGreaterThanOrEqual(3);
   });
 
   it('a de vrais bâtiments, dont des emprises non convexes, et des toits à deux pans', () => {
@@ -52,9 +60,8 @@ describe('carte réelle : Villagexpo (Saint-Michel-sur-Orge)', () => {
     expect(map.buildings.some((b) => b.kind === 'public')).toBe(true);
   });
 
-  it('longueur moyenne des itinéraires (objectif 600 m, écart noté dans le README)', () => {
-    const average = averageRouteLength(map.paths);
-    expect(average).toBeGreaterThan(350);
+  it('itinéraires de 600 m en moyenne au moins', () => {
+    expect(averageRouteLength(map.paths)).toBeGreaterThanOrEqual(600);
   });
 });
 

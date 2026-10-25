@@ -144,7 +144,7 @@ export function districtLayout(spec: DistrictSpec): { zone: Bounds; streets: Str
     if (spec.entries >= 3) streets.push({ width: 10, points: [node[nx]![0]!, node[0]![ny]!] });
   }
 
-  // Rues d'entrée : de l'extérieur de la zone jusqu'au bord de la grille.
+  // Rues d'entrée : de 100 m hors de la carte jusqu'au bord de la grille (les virus viennent de l'extérieur).
   const sides = rng.shuffle(['ouest', 'est', 'nord', 'sud']).slice(0, Math.min(4, Math.max(1, spec.entries)));
   const pick = (n: number) => 1 + Math.floor(rng.next() * Math.max(1, n - 1));
   for (const side of sides) {
@@ -152,10 +152,10 @@ export function districtLayout(spec: DistrictSpec): { zone: Bounds; streets: Str
     let to: Vec2;
     if (side === 'ouest' || side === 'est') {
       to = node[side === 'ouest' ? 0 : nx]![pick(ny)]!;
-      from = { x: side === 'ouest' ? zone.minX - 30 : zone.maxX + 30, y: to.y };
+      from = { x: side === 'ouest' ? zone.minX - 100 : zone.maxX + 100, y: to.y };
     } else {
       to = node[pick(nx)]![side === 'nord' ? 0 : ny]!;
-      from = { x: to.x, y: side === 'nord' ? zone.minY - 30 : zone.maxY + 30 };
+      from = { x: to.x, y: side === 'nord' ? zone.minY - 100 : zone.maxY + 100 };
     }
     streets.push({ width: 10, points: [from, to] });
   }

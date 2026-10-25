@@ -91,7 +91,7 @@ function arcPositions(center: Vec2, count: number, view: ViewRect): Vec2[] {
 /** Menu radial de construction ouvert sur un emplacement vide. */
 export class RadialMenu {
   readonly root: HTMLElement;
-  private readonly items: { option: RadialOption; button: HTMLButtonElement }[] = [];
+  private readonly items: { option: RadialOption; button: HTMLButtonElement; price: HTMLElement; cost: number }[] = [];
   private _slotId: number | null = null;
   private lastMoney = -1;
 
@@ -112,7 +112,7 @@ export class RadialMenu {
         e.stopPropagation();
         onPick(option.id);
       });
-      this.items.push({ option, button });
+      this.items.push({ option, button, price: button.querySelector('.radial-price') as HTMLElement, cost: option.cost });
       this.root.append(button);
     }
     parent.append(this.root);
@@ -147,10 +147,26 @@ export class RadialMenu {
   updateMoney(money: number): void {
     if (money === this.lastMoney) return;
     this.lastMoney = money;
-    for (const { option, button } of this.items) {
-      const affordable = money >= option.cost;
+    for (const { button, cost } of this.items) {
+      const affordable = money >= cost;
       button.classList.toggle('unaffordable', !affordable);
       button.setAttribute('aria-disabled', String(!affordable));
     }
+  }
+
+  /** Prix réels (un dispositif offert coûte 0) puis disponibilité selon l'argent. */
+  updatePrices(costOf: (id: string) => number, money: number): void {
+    let changed = false;
+    for (const item of this.items) {
+      const cost = costOf(item.option.id);
+      if (cost === item.cost) continue;
+      item.cost = cost;
+      item.price.textContent = cost === 0 ? t('tower.free') : t('tower.cost', { cost });
+      item.price.classList.toggle('radial-price-free', cost === 0);
+      item.button.setAttribute('aria-label', `${item.option.label} (${cost === 0 ? t('tower.free') : cost})`);
+      changed = true;
+    }
+    if (changed) this.lastMoney = -1;
+    this.updateMoney(money);
   }
 }

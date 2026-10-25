@@ -4,7 +4,7 @@ import { Rng } from '../game/rng';
 import type { Area, Bounds, Building, EntryMarker, GameMap, MapPath, Street, Vec2 } from '../game/types';
 import { generateTrees, type TreePlanting } from './city';
 import { clipPolylineToRect, interiorPoint, polygonArea, polylineToPolygonDistance } from './geometry';
-import { buildStreetGraph, coverRoutes, findEntries, routePoints, type StreetGraph } from './graph';
+import { buildStreetGraph, coverRoutes, routePoints, type GraphEdge, type StreetGraph } from './graph';
 import { attachPoint, simplifyStreetGraph } from './simplify';
 import { placeTowerSlots } from './slots';
 
@@ -12,15 +12,21 @@ import { placeTowerSlots } from './slots';
 // surfaces) : graphe des rues, base, entrées, itinéraires couvrant le réseau,
 // emplacements de tourelles et arbres (§ 4 étapes 4 à 8 du cahier des charges).
 // Sert pour les cartes OpenStreetMap et pour les quartiers générés.
+//
+// Le graphe couvre la zone de jeu et ses abords : deux rues de la zone
+// reliées seulement par l'extérieur restent reliées, et les virus arrivent de
+// l'extérieur de la carte, de tous les côtés, par les rues qui en sortent.
 
 export interface MapSource {
   id: string;
   name: string;
   seed: number;
-  /** Zone de jeu : les rues qui en sortent sont les entrées des virus. */
+  /** Zone de jeu (carte affichée). */
   zone: Bounds;
   /** Rues dessinées (elles peuvent dépasser de la zone). */
   streets: Street[];
+  /** Rues du réseau, abords compris (par défaut les rues dessinées). */
+  network?: Street[];
   buildings: Building[];
   areas: Area[];
   /** Bâtiment à protéger ; à défaut, le plus imposant ou le plus central. */
@@ -35,11 +41,13 @@ export interface MapSource {
 export interface MapReport {
   routes: number;
   entries: number;
+  /** Entrées par côté de la carte (N, S, E, O). */
+  sides: Record<'N' | 'S' | 'E' | 'O', number>;
   averageRouteLength: number;
-  /** Tronçons du réseau (après simplification) empruntés par au moins un itinéraire. */
+  /** Tronçons de la zone (après simplification) empruntés par au moins un itinéraire. */
   coveredEdges: number;
   totalEdges: number;
-  /** Longueur des rues du réseau qu'aucun itinéraire ne peut emprunter (impasses…), en m. */
+  /** Longueur des rues de la zone qu'aucun itinéraire ne peut emprunter (impasses…), en m. */
   uncoveredLength: number;
   networkLength: number;
   slots: number;
@@ -55,16 +63,32 @@ export const expand = (b: Bounds, m: number): Bounds => ({
   maxY: b.maxY + m,
 });
 
-/** Graphe simplifié des rues de la zone (les extrémités au bord sont protégées : ce sont les entrées). */
-export function zoneGraph(streets: readonly Street[], zone: Bounds, rules: OsmRulesConfig): StreetGraph {
-  const inside = streets.flatMap((s) => clipPolylineToRect(s.points, zone).map((points) => ({ points, width: s.width })));
-  const onBorder = (p: Vec2) =>
-    Math.min(p.x - zone.minX, zone.maxX - p.x, p.y - zone.minY, zone.maxY - p.y) <= rules.entryMargin;
-  return simplifyStreetGraph(buildStreetGraph(inside, rules.graphTolerance), {
+const inside = (p: Vec2, z: Bounds) => p.x > z.minX && p.x < z.maxX && p.y > z.minY && p.y < z.maxY;
+
+/** Distance d'un point extérieur à la zone (0 dedans). */
+function outsideDistance(p: Vec2, z: Bounds): number {
+  const dx = Math.max(z.minX - p.x, 0, p.x - z.maxX);
+  const dy = Math.max(z.minY - p.y, 0, p.y - z.maxY);
+  return Math.hypot(dx, dy);
+}
+
+/** Le tronçon passe-t-il dans la zone ? */
+const crossesZone = (e: GraphEdge, z: Bounds) => clipPolylineToRect(e.points, z).length > 0;
+
+/**
+ * Graphe simplifié des rues de la zone et de ses abords. Les nœuds hors de la
+ * zone ne sont ni fusionnés ni supprimés : ils gardent les liaisons extérieures
+ * et les rues d'entrée.
+ */
+export function networkGraph(streets: readonly Street[], zone: Bounds, rules: OsmRulesConfig): StreetGraph {
+  const area = expand(zone, rules.graphMargin);
+  const clipped = streets.flatMap((s) => clipPolylineToRect(s.points, area).map((points) => ({ points, width: s.width })));
+  const core = expand(zone, -rules.entryMargin);
+  return simplifyStreetGraph(buildStreetGraph(clipped, rules.graphTolerance), {
     mergeDistance: rules.mergeDistance,
     minDeadEnd: rules.minDeadEnd,
     tolerance: rules.simplifyTolerance,
-    isProtected: onBorder,
+    isProtected: (p) => !inside(p, core),
   });
 }
 
@@ -99,11 +123,48 @@ export function chooseBaseBuilding(
   return null;
 }
 
+/**
+ * Raccourcit le début d'un itinéraire : il commence `lead` mètres avant
+ * d'entrer dans la zone. Renvoie aussi le point et la direction d'entrée.
+ */
+export function trimToZone(
+  points: readonly Vec2[],
+  zone: Bounds,
+  lead: number,
+): { points: Vec2[]; entry: EntryMarker } | null {
+  let travelled = 0;
+  const cumulative = [0];
+  for (let i = 1; i < points.length; i++) cumulative.push((travelled += distance(points[i - 1]!, points[i]!)));
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!;
+    const b = points[i]!;
+    const piece = clipPolylineToRect([a, b], zone)[0];
+    if (!piece) continue;
+    const at = piece[0]!;
+    const len = distance(a, b) || 1;
+    const dir = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+    const startAt = Math.max(0, cumulative[i - 1]! + distance(a, at) - lead);
+    const out: Vec2[] = [];
+    for (let k = 1; k < points.length; k++) {
+      if (cumulative[k]! <= startAt) continue;
+      if (out.length === 0) {
+        const p = points[k - 1]!;
+        const q = points[k]!;
+        const t = (startAt - cumulative[k - 1]!) / (cumulative[k]! - cumulative[k - 1]! || 1);
+        out.push({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+      }
+      out.push(points[k]!);
+    }
+    return { points: out, entry: { x: at.x, y: at.y, dirX: dir.x, dirY: dir.y } };
+  }
+  return null;
+}
+
 export function assembleMap(source: MapSource, config: GameConfig): { map: GameMap; report: MapReport } {
   const rules = config.osm;
   const zone = source.zone;
-  let graph = zoneGraph(source.streets, zone, rules);
-  if (graph.edges.length === 0) throw new Error('aucune rue dans la zone');
+  let graph = networkGraph(source.network ?? source.streets, zone, rules);
+  if (!graph.edges.some((e) => crossesZone(e, zone))) throw new Error('aucune rue dans la zone');
 
   const center = source.center ?? { x: (zone.minX + zone.maxX) / 2, y: (zone.minY + zone.maxY) / 2 };
   const baseBuilding =
@@ -115,20 +176,27 @@ export function assembleMap(source: MapSource, config: GameConfig): { map: GameM
   graph = attached.graph;
   const baseNode = attached.node;
 
-  const entryNodes = findEntries(graph, zone, rules.entryMargin).filter((n) => n !== baseNode);
-  const { routes, uncovered } = coverRoutes(graph, entryNodes, baseNode);
+  // Entrées : les rues qui sortent de la carte, loin de son bord (les virus viennent de l'extérieur).
+  const entryNodes = graph.nodes
+    .filter((n) => n.id !== baseNode && graph.adjacency[n.id]!.length === 1)
+    .filter((n) => outsideDistance(n, zone) >= rules.entryLead / 2)
+    .map((n) => n.id);
+  const { routes, uncovered } = coverRoutes(graph, entryNodes, baseNode, (e) => crossesZone(e, zone));
   if (routes.length === 0) throw new Error('aucun itinéraire ne relie une entrée à la base');
 
-  const paths: MapPath[] = routes.map((r, i) => ({ id: `r${i + 1}`, points: routePoints(graph, r) }));
+  // Chaque itinéraire commence peu avant d'entrer dans la carte ; les itinéraires devenus identiques sont fusionnés.
+  const paths: MapPath[] = [];
   const entries: EntryMarker[] = [];
-  const seenEntries = new Set<number>();
-  routes.forEach((r, i) => {
-    if (seenEntries.has(r.entry)) return;
-    seenEntries.add(r.entry);
-    const [a, b] = paths[i]!.points as [Vec2, Vec2];
-    const len = distance(a, b) || 1;
-    entries.push({ x: a.x, y: a.y, dirX: (b.x - a.x) / len, dirY: (b.y - a.y) / len });
-  });
+  const seen = new Set<string>();
+  for (const route of routes) {
+    const trimmed = trimToZone(routePoints(graph, route), zone, rules.entryLead);
+    if (!trimmed || trimmed.points.length < 2) continue;
+    const key = trimmed.points.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join(';');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    paths.push({ id: `r${paths.length + 1}`, points: trimmed.points });
+    if (!entries.some((e) => distance(e, trimmed.entry) < 15)) entries.push(trimmed.entry);
+  }
   const basePoint = { x: graph.nodes[baseNode]!.x, y: graph.nodes[baseNode]!.y };
 
   const slotBuildings = source.buildings.filter((b) => b.id !== baseBuilding?.id);
@@ -169,15 +237,24 @@ export function assembleMap(source: MapSource, config: GameConfig): { map: GameM
     trees,
     ...(source.attribution ? { attribution: source.attribution } : {}),
   };
+  const zoneEdges = graph.edges.filter((e) => crossesZone(e, zone));
   const uncoveredSet = new Set(uncovered);
+  const lengthOf = (pts: readonly Vec2[]) => pts.slice(1).reduce((s, p, i) => s + distance(pts[i]!, p), 0);
+  const sides = { N: 0, S: 0, E: 0, O: 0 };
+  for (const e of entries) {
+    const d = { O: e.x - zone.minX, E: zone.maxX - e.x, N: e.y - zone.minY, S: zone.maxY - e.y };
+    const side = (Object.keys(d) as (keyof typeof d)[]).sort((a, b) => d[a] - d[b])[0]!;
+    sides[side]++;
+  }
   const report: MapReport = {
-    routes: routes.length,
+    routes: paths.length,
     entries: entries.length,
-    averageRouteLength: routes.reduce((s, r) => s + r.length, 0) / routes.length,
-    coveredEdges: graph.edges.length - uncovered.length,
-    totalEdges: graph.edges.length,
-    uncoveredLength: graph.edges.filter((e) => uncoveredSet.has(e.id)).reduce((s, e) => s + e.length, 0),
-    networkLength: graph.edges.reduce((s, e) => s + e.length, 0),
+    sides,
+    averageRouteLength: paths.reduce((s, p) => s + lengthOf(p.points), 0) / Math.max(1, paths.length),
+    coveredEdges: zoneEdges.length - zoneEdges.filter((e) => uncoveredSet.has(e.id)).length,
+    totalEdges: zoneEdges.length,
+    uncoveredLength: zoneEdges.filter((e) => uncoveredSet.has(e.id)).reduce((s, e) => s + e.length, 0),
+    networkLength: zoneEdges.reduce((s, e) => s + e.length, 0),
     slots: slots.length,
     roofSlots: slots.filter((s) => s.kind === 'roof').length,
     baseName: baseBuilding?.name ?? null,
@@ -194,7 +271,7 @@ export function roundMap(map: GameMap, decimals = 1): GameMap {
     ...map,
     bounds: { minX: r(map.bounds.minX), minY: r(map.bounds.minY), maxX: r(map.bounds.maxX), maxY: r(map.bounds.maxY) },
     paths: map.paths.map((p) => ({ id: p.id, points: dedupe(p.points.map(v)) })),
-    entries: map.entries.map((e) => ({ x: r(e.x), y: r(e.y), dirX: r(e.dirX * 100) / 100, dirY: r(e.dirY * 100) / 100 })),
+    entries: map.entries.map((e) => ({ x: r(e.x), y: r(e.y), dirX: Math.round(e.dirX * 1000) / 1000, dirY: Math.round(e.dirY * 1000) / 1000 })),
     slots: map.slots.map((s) => ({ ...s, x: r(s.x), y: r(s.y), elevation: r(s.elevation) })),
     base: v(map.base),
     streets: map.streets.map((s) => ({ width: s.width, points: dedupe(s.points.map(v)) })),

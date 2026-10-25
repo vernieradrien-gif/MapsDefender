@@ -7,12 +7,21 @@ export interface HudHandlers {
   onNextWave(): void;
   onSpeed(): void;
   onPause(): void;
+  onZoomIn(): void;
+  onZoomOut(): void;
+  /** Boost de crédits (pub récompensée), entre deux vagues seulement. */
+  onBoost(): void;
 }
 
 /** Barre haute (crédits, PV de la base, vague, pause) et barre basse (vague suivante, vitesse). */
 export class Hud {
   readonly top: HTMLElement;
   readonly bottom: HTMLElement;
+  /** Boutons de zoom (une main). */
+  readonly zoom: HTMLElement;
+  private readonly zoomOut: HTMLButtonElement;
+  private readonly boost: HTMLButtonElement;
+  private readonly boostLabel: HTMLElement;
   private readonly money: HTMLElement;
   private readonly hp: HTMLElement;
   private readonly hpStat: HTMLElement;
@@ -59,7 +68,31 @@ export class Hud {
     speed.addEventListener('click', handlers.onSpeed);
 
     this.bottom.append(this.waveButton, speed);
-    parent.append(this.top, this.bottom);
+
+    this.boost = el('button', 'boost-button hidden', icons.coin);
+    this.boost.type = 'button';
+    this.boostLabel = el('span');
+    this.boost.append(this.boostLabel);
+    this.boost.addEventListener('click', handlers.onBoost);
+
+    this.zoom = el('div', 'zoom-controls');
+    const zoomButton = (icon: string, label: string, onClick: () => void) => {
+      const b = el('button', 'icon-button zoom-button', icon);
+      b.type = 'button';
+      b.setAttribute('aria-label', label);
+      b.addEventListener('click', onClick);
+      this.zoom.append(b);
+      return b;
+    };
+    zoomButton(icons.zoomIn, t('hud.zoomIn'), handlers.onZoomIn);
+    this.zoomOut = zoomButton(icons.zoomOut, t('hud.zoomOut'), handlers.onZoomOut);
+    parent.append(this.top, this.bottom, this.zoom, this.boost);
+  }
+
+  /** Le bouton « − » est inactif quand toute la carte est déjà visible. */
+  setZoom(zoom: number): void {
+    const atMin = zoom <= 1.001;
+    if (this.zoomOut.disabled !== atMin) this.zoomOut.disabled = atMin;
   }
 
   update(game: Game, speed: number): void {
@@ -80,5 +113,13 @@ export class Hud {
     setText(this.waveLabel, label);
     if (this.waveButton.disabled === canCall) this.waveButton.disabled = !canCall;
     setText(this.speedLabel, t('hud.speedValue', { speed }));
+
+    // Boost : proposé entre deux vagues ; ensuite, rappel de la vague boostée.
+    const boosted = game.boostedWave !== null && game.boostedWave >= game.wavesLaunched ? game.boostedWave : null;
+    const offer = game.canBoost();
+    this.boost.classList.toggle('hidden', !offer && boosted === null);
+    this.boost.classList.toggle('active', !offer && boosted !== null);
+    this.boost.disabled = !offer;
+    setText(this.boostLabel, offer ? t('hud.boostOffer') : t('hud.boostActive', { wave: boosted ?? 0 }));
   }
 }

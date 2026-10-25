@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">StreetDefense</string>
+    <string name="title_activity_main">StreetDefense</string>
+    <string name="package_name">io.github.vernieradrien.streetdefense</string>
+    <string name="custom_url_scheme">io.github.vernieradrien.streetdefense</string>
+</resources>
