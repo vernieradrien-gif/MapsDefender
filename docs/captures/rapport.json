@@ -14,12 +14,12 @@
   "victory": {
     "phase": "victory",
     "wave": 30,
-    "baseHp": 15
+    "baseHp": 3
   },
   "performance": {
     "enemies": 176,
-    "fps": 60.2,
-    "renderMs": 12.12
+    "fps": 59,
+    "renderMs": 13.68
   },
   "pageErrors": []
 }
