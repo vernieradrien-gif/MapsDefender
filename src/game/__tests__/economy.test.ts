@@ -17,10 +17,10 @@ describe('économie', () => {
     expect(canAfford(99, 100)).toBe(false);
   });
 
-  it('le score des Gloutons repoussés augmente avec la vague', () => {
-    const glouton = config.enemies.find((e) => e.id === 'glouton')!;
-    expect(killScore(glouton, 1)).toBe(glouton.score);
-    expect(killScore(glouton, 5)).toBe(glouton.score * 5);
+  it('le score des virus neutralisés augmente avec la vague', () => {
+    const virus = config.enemies.find((e) => e.id === 'virus')!;
+    expect(killScore(virus, 1)).toBe(virus.score);
+    expect(killScore(virus, 5)).toBe(virus.score * 5);
     expect(waveClearScore(3, config.score)).toBe(config.score.perWaveCleared * 3);
   });
 

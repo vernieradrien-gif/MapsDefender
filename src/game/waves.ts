@@ -20,8 +20,14 @@ export function scaledHp(baseHp: number, multiplier: number): number {
   return Math.max(1, Math.round(baseHp * multiplier));
 }
 
-export function waveEnemyCount(wave: number, waves: WavesConfig): number {
-  return Math.max(1, Math.round(waves.countBase + waves.countPerWave * (wave - 1)));
+/** Nombre d'ennemis ordinaires : (countBase + countPerWave × (vague − 1)) × facteur de carte. */
+export function waveEnemyCount(wave: number, waves: WavesConfig, factor = 1): number {
+  return Math.max(1, Math.round((waves.countBase + waves.countPerWave * (wave - 1)) * factor));
+}
+
+/** Une vague de boss toutes les `bossEvery` vagues. */
+export function isBossWave(wave: number, waves: WavesConfig): boolean {
+  return wave % waves.bossEvery === 0;
 }
 
 export function waveSpawnInterval(wave: number, waves: WavesConfig): number {
@@ -58,14 +64,18 @@ export function waveComposition(wave: number, count: number, waves: WavesConfig)
   return result;
 }
 
-/** Plan complet d'une vague ; l'ordre d'apparition est mélangé avec le générateur à graine. */
-export function buildWavePlan(wave: number, waves: WavesConfig, rng: Rng): WavePlan {
-  const count = waveEnemyCount(wave, waves);
+/**
+ * Plan complet d'une vague ; l'ordre d'apparition est mélangé avec le
+ * générateur à graine. Le boss, s'il y en a un, ferme la marche.
+ */
+export function buildWavePlan(wave: number, waves: WavesConfig, rng: Rng, factor = 1): WavePlan {
+  const count = waveEnemyCount(wave, waves, factor);
   const enemies: string[] = [];
   for (const [enemy, n] of waveComposition(wave, count, waves)) {
     for (let i = 0; i < n; i++) enemies.push(enemy);
   }
   rng.shuffle(enemies);
+  if (isBossWave(wave, waves)) enemies.push(waves.boss);
   return {
     number: wave,
     enemies,

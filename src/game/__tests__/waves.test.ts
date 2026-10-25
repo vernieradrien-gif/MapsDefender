@@ -59,7 +59,7 @@ describe('vagues', () => {
 
   it('seuls les Gloutons simples apparaissent à la vague 1', () => {
     const composition = waveComposition(1, 10, waves);
-    expect([...composition.keys()]).toEqual(['glouton']);
+    expect([...composition.keys()]).toEqual(['virus']);
   });
 
   it('répartit selon les poids (plus fort reste)', () => {
