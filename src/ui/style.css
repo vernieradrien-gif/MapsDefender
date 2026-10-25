@@ -217,6 +217,18 @@ body {
   min-width: 230px;
 }
 
+.button-resume {
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 20px;
+}
+
+.button-resume small {
+  font-size: 15px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
 .button-wave {
   flex: 1 1 auto;
   min-width: 0;

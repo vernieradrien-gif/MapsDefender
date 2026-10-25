@@ -94,10 +94,9 @@ export class HomeScreen extends Overlay {
       this.content.append(el('p', 'debug-note', escapeHtml(t('start.debug', { money: info.debugMoney }))));
     }
     if (info.saved) {
-      this.content.append(
-        button(t('home.resume', { map: info.saved.mapName, wave: info.saved.wave }), 'button-primary button-large', h.onResume),
-        button(t('home.newGame'), 'button-secondary', h.onPlay),
-      );
+      const resume = button(t('home.resume'), 'button-primary button-large button-resume', h.onResume);
+      resume.append(el('small', '', escapeHtml(t('home.resumeDetail', { map: info.saved.mapName, wave: info.saved.wave }))));
+      this.content.append(resume, button(t('home.newGame'), 'button-secondary', h.onPlay));
     } else {
       this.content.append(button(t('start.play'), 'button-primary button-large', h.onPlay));
     }
