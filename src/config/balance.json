@@ -171,6 +171,22 @@
       "paletteCount": 4
     }
   },
+  "progression": {
+    "gemFactor": 0.18,
+    "upgrades": [
+      { "id": "degats", "maxLevel": 5, "costs": [8, 16, 30, 50, 80], "effect": 0.05, "requires": null },
+      { "id": "credits", "maxLevel": 5, "costs": [8, 16, 30, 50, 80], "effect": 25, "requires": null },
+      { "id": "offert", "maxLevel": 3, "costs": [25, 50, 90], "effect": 1, "requires": { "id": "credits", "level": 2 } },
+      { "id": "portee", "maxLevel": 3, "costs": [25, 50, 90], "effect": 0.04, "requires": { "id": "degats", "level": 2 } }
+    ]
+  },
+  "ads": {
+    "continueHp": 10,
+    "gemsMultiplier": 2,
+    "boostMultiplier": 2,
+    "interstitialMinSeconds": 180,
+    "fakeAdSeconds": 3
+  },
   "debug": {
     "startMoney": 5000
   }

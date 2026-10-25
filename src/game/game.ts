@@ -4,12 +4,16 @@ import type { GameEvent } from './events';
 import { PreparedPath, type PathSample } from './path';
 import { Rng } from './rng';
 import { mapFactor, scaledStartMoney } from './scaling';
+import { NO_BONUSES, type GameBonuses } from './progression';
 import { candidatesInRadius, selectTarget } from './targeting';
 import { heightBonus, sellValue, towerStats, upgradeCost } from './towers';
 import type { GameMap, TowerSlot } from './types';
 import { buildWavePlan, scaledHp } from './waves';
 
 export type GamePhase = 'running' | 'victory' | 'defeat';
+
+/** Dispositif que l'amélioration permanente « offert » rend gratuit. */
+const FREE_TOWER = 'pulverisateur';
 
 export type PlaceTowerResult =
   | 'ok'
@@ -91,6 +95,33 @@ export interface Projectile {
   alive: boolean;
 }
 
+/** Partie sauvegardée (données simples, JSON). */
+export interface GameSnapshot {
+  version: 1;
+  mapId: string;
+  mapFactor: number;
+  startMoney: number;
+  phase: GamePhase;
+  money: number;
+  baseHp: number;
+  score: number;
+  kills: number;
+  wavesLaunched: number;
+  wavesCleared: number;
+  countdown: number | null;
+  time: number;
+  rng: number;
+  nextId: number;
+  spawnCount: number;
+  freeTowers: number;
+  boostedWave: number | null;
+  revived: boolean;
+  towers: { id: number; type: string; slotId: number; level: number; invested: number; cooldown: number; angle: number }[];
+  enemies: { id: number; type: string; wave: number; pathIndex: number; distance: number; offset: number; hp: number; maxHp: number }[];
+  projectiles: Omit<Projectile, 'prevX' | 'prevY' | 'alive'>[];
+  waves: ActiveWave[];
+}
+
 interface ActiveWave {
   number: number;
   queue: string[];
@@ -109,6 +140,8 @@ export interface GameOptions {
   seed?: number;
   /** Remplace le facteur de carte (longueur des itinéraires / référence). */
   mapFactor?: number;
+  /** Effets des améliorations permanentes. */
+  bonuses?: GameBonuses;
 }
 
 /**
@@ -124,6 +157,7 @@ export class Game {
   /** Facteur de carte : multiplie le nombre de virus par vague et l'argent de départ. */
   readonly mapFactor: number;
   readonly startMoney: number;
+  readonly bonuses: GameBonuses;
 
   readonly enemies: Enemy[] = [];
   readonly towers: Tower[] = [];
@@ -139,7 +173,7 @@ export class Game {
   private _countdown: number | null;
   private _time = 0;
 
-  private readonly rng: Rng;
+  private rng: Rng;
   private readonly enemyConfigs = new Map<string, EnemyConfig>();
   private readonly towerConfigs = new Map<string, TowerConfig>();
   private readonly slotsById = new Map<number, TowerSlot>();
@@ -150,6 +184,12 @@ export class Game {
   private events: GameEvent[] = [];
   private nextId = 1;
   private spawnCount = 0;
+  private _freeTowers: number;
+  /** Vague dont les gains sont multipliés (pub récompensée), ou null. */
+  private _boostedWave: number | null = null;
+  private _revived = false;
+  /** Virus qui a fait tomber la base : sa vague sera soldée si la partie continue. */
+  private pendingResolve: Enemy | null = null;
   private readonly sample: PathSample = { x: 0, y: 0, dirX: 1, dirY: 0 };
 
   constructor(map: GameMap, config: GameConfig, options: GameOptions = {}) {
@@ -161,7 +201,9 @@ export class Game {
     this.baseMaxHp = config.base.hp;
     this._baseHp = config.base.hp;
     this.mapFactor = options.mapFactor ?? mapFactor(map.paths, config.mapScaling);
-    this.startMoney = options.startMoney ?? scaledStartMoney(config, this.mapFactor);
+    this.bonuses = options.bonuses ?? NO_BONUSES;
+    this.startMoney = options.startMoney ?? scaledStartMoney(config, this.mapFactor) + this.bonuses.startMoney;
+    this._freeTowers = this.bonuses.freeTowers;
     this._money = this.startMoney;
     this._countdown = config.waves.prepSeconds;
     this.rng = new Rng(options.seed ?? map.seed);
@@ -214,6 +256,27 @@ export class Game {
     return this.towerById.get(id);
   }
 
+  /** Pulvérisateurs encore offerts (amélioration permanente). */
+  get freeTowers(): number {
+    return this._freeTowers;
+  }
+
+  /** Prix réel d'un dispositif : 0 pour un Pulvérisateur offert. */
+  costOf(towerId: string): number {
+    const config = this.towerConfigs.get(towerId);
+    if (!config) return Infinity;
+    return this._freeTowers > 0 && towerId === FREE_TOWER ? 0 : config.cost;
+  }
+
+  get boostedWave(): number | null {
+    return this._boostedWave;
+  }
+
+  /** Plus aucun virus en jeu ni à venir dans la vague en cours. */
+  get isCalm(): boolean {
+    return this.activeWaves.length === 0 && this.enemies.length === 0;
+  }
+
   towerConfig(id: string): TowerConfig | undefined {
     return this.towerConfigs.get(id);
   }
@@ -227,7 +290,7 @@ export class Game {
     const slot = this.slotsById.get(slotId);
     const config = this.towerConfigs.get(towerId);
     if (!slot || !config) return 0;
-    return towerStats(config, 0, heightBonus(slot, this.config.heightBonus)).range;
+    return towerStats(config, 0, heightBonus(slot, this.config.heightBonus), this.bonuses).range;
   }
 
   /** Coût de la prochaine amélioration, ou null au niveau maximal. */
@@ -239,7 +302,7 @@ export class Game {
   /** Caractéristiques qu'aurait la tourelle après la prochaine amélioration. */
   nextLevelStats(tower: Tower) {
     if (tower.level >= this.config.upgrades.maxLevel) return null;
-    return towerStats(tower.config, tower.level + 1, tower.heightBonus);
+    return towerStats(tower.config, tower.level + 1, tower.heightBonus, this.bonuses);
   }
 
   sellValue(tower: Tower): number {
@@ -262,9 +325,11 @@ export class Game {
     if (this.towerBySlot.has(slotId)) return 'occupied';
     const config = this.towerConfigs.get(towerId);
     if (!config) return 'unknown-tower';
-    if (!canAfford(this._money, config.cost)) return 'insufficient-funds';
+    const cost = this.costOf(towerId);
+    if (!canAfford(this._money, cost)) return 'insufficient-funds';
 
-    this._money -= config.cost;
+    this._money -= cost;
+    if (cost === 0) this._freeTowers--;
     const bonus = heightBonus(slot, this.config.heightBonus);
     const tower: Tower = {
       id: this.nextId++,
@@ -273,9 +338,9 @@ export class Game {
       x: slot.x,
       y: slot.y,
       level: 0,
-      invested: config.cost,
+      invested: cost,
       heightBonus: bonus,
-      ...towerStats(config, 0, bonus),
+      ...towerStats(config, 0, bonus, this.bonuses),
       cooldown: 0,
       angle: -Math.PI / 2,
       targetId: null,
@@ -297,7 +362,7 @@ export class Game {
     this._money -= cost;
     tower.level++;
     tower.invested += cost;
-    Object.assign(tower, towerStats(tower.config, tower.level, tower.heightBonus));
+    Object.assign(tower, towerStats(tower.config, tower.level, tower.heightBonus, this.bonuses));
     this.events.push({ type: 'towerUpgraded', towerId, level: tower.level, cost });
     return 'ok';
   }
@@ -316,6 +381,39 @@ export class Game {
     return refund;
   }
 
+  /** « Continuer » après une défaite (pub récompensée) : une seule fois par partie. */
+  canRevive(): boolean {
+    return this._phase === 'defeat' && !this._revived;
+  }
+
+  revive(hp: number): boolean {
+    if (!this.canRevive()) return false;
+    this._revived = true;
+    this._baseHp = Math.min(this.baseMaxHp, hp);
+    this._phase = 'running';
+    if (this.pendingResolve) this.resolveEnemy(this.pendingResolve);
+    this.pendingResolve = null;
+    this.events.push({ type: 'revived', baseHp: this._baseHp });
+    return true;
+  }
+
+  /** Boost de crédits (pub récompensée) : seulement entre deux vagues, jamais pendant une vague. */
+  canBoost(): boolean {
+    return (
+      this._phase === 'running' &&
+      this.isCalm &&
+      this._wavesLaunched < this.totalWaves &&
+      (this._boostedWave === null || this._boostedWave <= this._wavesLaunched)
+    );
+  }
+
+  /** Les gains de la prochaine vague sont multipliés. */
+  boostNextWave(): boolean {
+    if (!this.canBoost()) return false;
+    this._boostedWave = this._wavesLaunched + 1;
+    return true;
+  }
+
   /** La prochaine vague peut être appelée en avance pendant le compte à rebours. */
   canCallNextWave(): boolean {
     return (
@@ -329,6 +427,119 @@ export class Game {
     if (!this.canCallNextWave()) return false;
     this.launchNextWave();
     return true;
+  }
+
+  // --- Sauvegarde ------------------------------------------------------------
+
+  /** État complet de la partie, en données simples (sauvegarde à chaque fin de vague). */
+  snapshot(): GameSnapshot {
+    return {
+      version: 1,
+      mapId: this.map.id,
+      mapFactor: this.mapFactor,
+      startMoney: this.startMoney,
+      phase: this._phase,
+      money: this._money,
+      baseHp: this._baseHp,
+      score: this._score,
+      kills: this._kills,
+      wavesLaunched: this._wavesLaunched,
+      wavesCleared: this._wavesCleared,
+      countdown: this._countdown,
+      time: this._time,
+      rng: this.rng.state,
+      nextId: this.nextId,
+      spawnCount: this.spawnCount,
+      freeTowers: this._freeTowers,
+      boostedWave: this._boostedWave,
+      revived: this._revived,
+      towers: this.towers.map((t) => ({
+        id: t.id,
+        type: t.config.id,
+        slotId: t.slotId,
+        level: t.level,
+        invested: t.invested,
+        cooldown: t.cooldown,
+        angle: t.angle,
+      })),
+      enemies: this.enemies
+        .filter((e) => e.alive)
+        .map((e) => ({
+          id: e.id,
+          type: e.config.id,
+          wave: e.wave,
+          pathIndex: e.pathIndex,
+          distance: e.distance,
+          offset: e.offset,
+          hp: e.hp,
+          maxHp: e.maxHp,
+        })),
+      projectiles: this.projectiles
+        .filter((p) => p.alive)
+        .map(({ prevX: _x, prevY: _y, alive: _a, ...p }) => p),
+      waves: this.activeWaves.map((w) => ({ ...w, queue: [...w.queue] })),
+    };
+  }
+
+  /** Reprend une partie sauvegardée sur la même carte. */
+  static restore(map: GameMap, config: GameConfig, snap: GameSnapshot, bonuses?: GameBonuses): Game {
+    if (snap.version !== 1 || snap.mapId !== map.id) throw new Error('sauvegarde incompatible');
+    const game = new Game(map, config, {
+      mapFactor: snap.mapFactor,
+      startMoney: snap.startMoney,
+      ...(bonuses ? { bonuses } : {}),
+    });
+    game._phase = snap.phase;
+    game._money = snap.money;
+    game._baseHp = snap.baseHp;
+    game._score = snap.score;
+    game._kills = snap.kills;
+    game._wavesLaunched = snap.wavesLaunched;
+    game._wavesCleared = snap.wavesCleared;
+    game._countdown = snap.countdown;
+    game._time = snap.time;
+    game.rng = new Rng(snap.rng);
+    game.nextId = snap.nextId;
+    game.spawnCount = snap.spawnCount;
+    game._freeTowers = snap.freeTowers;
+    game._boostedWave = snap.boostedWave;
+    game._revived = snap.revived;
+    for (const t of snap.towers) {
+      const tc = game.towerConfigs.get(t.type);
+      const slot = game.slotsById.get(t.slotId);
+      if (!tc || !slot) continue;
+      const bonus = heightBonus(slot, config.heightBonus);
+      const tower: Tower = {
+        id: t.id,
+        config: tc,
+        slotId: t.slotId,
+        x: slot.x,
+        y: slot.y,
+        level: t.level,
+        invested: t.invested,
+        heightBonus: bonus,
+        ...towerStats(tc, t.level, bonus, game.bonuses),
+        cooldown: t.cooldown,
+        angle: t.angle,
+        targetId: null,
+      };
+      game.towers.push(tower);
+      game.towerBySlot.set(t.slotId, tower);
+      game.towerById.set(t.id, tower);
+    }
+    for (const e of snap.enemies) {
+      const ec = game.enemyConfigs.get(e.type);
+      if (!ec || e.pathIndex >= game.paths.length) continue;
+      const enemy: Enemy = { ...e, config: ec, remaining: 0, slow: 0, x: 0, y: 0, prevX: 0, prevY: 0, dirX: 1, dirY: 0, alive: true };
+      game.positionEnemy(enemy);
+      enemy.prevX = enemy.x;
+      enemy.prevY = enemy.y;
+      game.enemies.push(enemy);
+      game.enemyById.set(enemy.id, enemy);
+    }
+    for (const p of snap.projectiles) game.projectiles.push({ ...p, prevX: p.x, prevY: p.y, alive: true });
+    for (const w of snap.waves) game.activeWaves.push({ ...w, queue: [...w.queue] });
+    return game;
   }
 
   // --- Simulation ------------------------------------------------------------
@@ -488,6 +699,7 @@ export class Game {
     this.events.push({ type: 'baseHit', damage: enemy.config.baseDamage, baseHp: this._baseHp });
     if (this._baseHp <= 0) {
       this._phase = 'defeat';
+      this.pendingResolve = enemy;
       this.events.push({ type: 'gameOver', victory: false, score: this._score });
       return;
     }
@@ -603,7 +815,8 @@ export class Game {
     if (enemy.hp > 0) return;
     enemy.hp = 0;
     enemy.alive = false;
-    this._money += enemy.config.reward;
+    const reward = enemy.config.reward * (enemy.wave === this._boostedWave ? this.config.ads.boostMultiplier : 1);
+    this._money += reward;
     this._kills++;
     this._score += killScore(enemy.config, enemy.wave);
     this.events.push({
@@ -612,7 +825,7 @@ export class Game {
       enemyType: enemy.config.id,
       x: enemy.x,
       y: enemy.y,
-      reward: enemy.config.reward,
+      reward,
     });
     this.split(enemy);
     this.resolveEnemy(enemy);
