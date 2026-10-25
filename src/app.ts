@@ -13,7 +13,7 @@ import { readJSON, writeJSON } from './storage';
 import { el } from './ui/dom';
 import { Hud } from './ui/hud';
 import { towerIcon } from './ui/icons';
-import { findSlotAt, onTap } from './ui/input';
+import { attachGestures, findSlotAt } from './ui/input';
 import { RadialMenu } from './ui/radialMenu';
 import { EndScreen, PauseScreen, StartScreen, Toast } from './ui/screens';
 import { TowerMenu, type TowerMenuInfo } from './ui/towerMenu';
@@ -45,6 +45,8 @@ export interface DebugHooks {
 }
 
 const SELECTION_SECONDS = 3;
+/** Facteur de zoom des boutons + et −. */
+const ZOOM_STEP = 1.5;
 const END_SCREEN_DELAY_MS = 900;
 
 /**
@@ -99,6 +101,8 @@ export class App {
       onNextWave: () => this.callNextWave(),
       onSpeed: () => this.cycleSpeed(),
       onPause: () => this.pause(),
+      onZoomIn: () => this.zoomStep(ZOOM_STEP),
+      onZoomOut: () => this.zoomStep(1 / ZOOM_STEP),
     });
     this.radial = new RadialMenu(
       root,
@@ -135,7 +139,16 @@ export class App {
     this.endScreen = new EndScreen(root, () => this.restart());
     this.startScreen.show();
 
-    onTap(canvas, (x, y) => this.onCanvasTap(x, y));
+    attachGestures(canvas, {
+      tap: (x, y) => this.onCanvasTap(x, y),
+      pan: (dx, dy) => {
+        if (this.renderer.panBy(dx, dy)) this.closeMenus();
+      },
+      zoom: (factor, x, y) => {
+        if (this.renderer.zoomAt(factor, x, y)) this.closeMenus();
+      },
+      end: () => this.renderer.settle(),
+    });
     root.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('resize', () => this.layout());
     window.visualViewport?.addEventListener('resize', () => this.layout());
@@ -175,6 +188,7 @@ export class App {
     }
 
     this.hud.update(this.game, this.speed);
+    this.hud.setZoom(this.renderer.zoom);
     if (this.radial.isOpen) this.radial.updateMoney(this.game.money);
     if (this.towerMenu.isOpen) this.towerMenu.updateMoney(this.game.money);
     const menuTower = this.towerMenu.towerId === null ? undefined : this.game.getTower(this.towerMenu.towerId);
@@ -276,6 +290,11 @@ export class App {
   private cycleSpeed(): void {
     this.speedIndex = (this.speedIndex + 1) % this.config.simulation.speeds.length;
     writeJSON('speedIndex', this.speedIndex);
+  }
+
+  private zoomStep(factor: number): void {
+    this.closeMenus();
+    this.renderer.zoomStep(factor);
   }
 
   private closeMenus(): void {

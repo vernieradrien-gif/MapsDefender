@@ -175,6 +175,10 @@ export interface OsmRulesConfig {
   zoneHeight: number;
   /** Décor dessiné autour de la zone (m). */
   decorMargin: number;
+  /** Abords pris dans le réseau des rues (m) : liaisons par l'extérieur et rues d'entrée. */
+  graphMargin: number;
+  /** Les virus apparaissent à cette distance avant d'entrer dans la carte (m). */
+  entryLead: number;
   /** Une extrémité de rue à moins de cette distance du bord est une entrée (m). */
   entryMargin: number;
   /** Largeur de chaussée (m) par type de voie OSM. */
@@ -329,6 +333,9 @@ export function validateConfig(config: GameConfig): string[] {
   const o = config.osm;
   positive(o.zoneWidth, 'osm.zoneWidth');
   positive(o.zoneHeight, 'osm.zoneHeight');
+  positive(o.entryLead, 'osm.entryLead');
+  if (!(o.graphMargin >= o.entryLead)) errors.push('osm.graphMargin doit être >= entryLead');
+  if (!(o.decorMargin >= o.entryLead)) errors.push('osm.decorMargin doit être >= entryLead (les virus marchent sur des rues dessinées)');
   positive(o.levelHeight, 'osm.levelHeight');
   for (const [kind, h] of Object.entries(o.defaultHeights)) positive(h, `osm.defaultHeights.${kind}`);
   ratio(o.gableMinRectangularity, 'osm.gableMinRectangularity');

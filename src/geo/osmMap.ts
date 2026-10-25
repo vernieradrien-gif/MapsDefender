@@ -27,12 +27,12 @@ export function playZone(config: GameConfig) {
   return { minX: -w, minY: -h, maxX: w, maxY: h };
 }
 
-/** Emprise géographique à demander à Overpass : la zone de jeu et son décor. */
+/** Emprise géographique à demander à Overpass : la zone de jeu, son décor et les abords du réseau. */
 export function queryBox(place: OsmPlace, config: GameConfig): GeoBox {
   const projection = localProjection(place.center);
-  const decor = expand(playZone(config), config.osm.decorMargin);
-  const nw = projection.toLatLon({ x: decor.minX, y: decor.minY });
-  const se = projection.toLatLon({ x: decor.maxX, y: decor.maxY });
+  const area = expand(playZone(config), Math.max(config.osm.decorMargin, config.osm.graphMargin));
+  const nw = projection.toLatLon({ x: area.minX, y: area.minY });
+  const se = projection.toLatLon({ x: area.maxX, y: area.maxY });
   return { south: se.lat, west: nw.lon, north: nw.lat, east: se.lon };
 }
 
@@ -49,13 +49,12 @@ export function osmMapSource(place: OsmPlace, response: OverpassResponse, config
   const zone = playZone(config);
   const decor = expand(zone, rules.decorMargin);
 
-  const streets: Street[] = features.streets.flatMap((s) => {
-    const width = rules.streetWidths[s.highway] ?? rules.streetWidths.residential ?? 8;
-    return clipPolylineToRect(s.points, decor).map((points) => ({
-      points: douglasPeucker(points, rules.drawTolerance),
-      width,
-    }));
-  });
+  const widthOf = (highway: string) => rules.streetWidths[highway] ?? rules.streetWidths.residential ?? 8;
+  const streets: Street[] = features.streets.flatMap((s) =>
+    clipPolylineToRect(s.points, decor).map((points) => ({ points: douglasPeucker(points, rules.drawTolerance), width: widthOf(s.highway) })),
+  );
+  // Réseau : les rues entières, le graphe les découpe à ses abords.
+  const network: Street[] = features.streets.map((s) => ({ points: s.points, width: widthOf(s.highway) }));
 
   const buildings: Building[] = [];
   for (const b of features.buildings) {
@@ -81,6 +80,7 @@ export function osmMapSource(place: OsmPlace, response: OverpassResponse, config
     seed: placeSeed(place, config),
     zone,
     streets,
+    network,
     buildings,
     areas,
     center: { x: 0, y: 0 },

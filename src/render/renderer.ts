@@ -38,11 +38,17 @@ export class Renderer {
   private slotLift = new Map<number, number>();
   /** Haut du bâtiment à protéger (monde) et sa hauteur (m), pour la jauge de PV. */
   private baseTop: { at: Vec2; height: number } = { at: { x: 0, y: 0 }, height: 0 };
+  /** Caméra avec laquelle le calque du décor a été dessiné (pour l'agrandir pendant un geste). */
+  private layerCamera = { scale: 1, offsetX: 0, offsetY: 0 };
+  /** Le décor doit être redessiné net (après un zoom ou un déplacement). */
+  private layerStale = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.ctx = get2d(canvas);
     this.staticLayer = document.createElement('canvas');
     this.shadowLayer = document.createElement('canvas');
+    this.camera.maxZoom = theme.camera.maxZoom;
+    this.camera.overscroll = theme.camera.overscroll;
   }
 
   resize(width: number, height: number, dpr: number, view: ViewRect): void {
@@ -75,6 +81,44 @@ export class Renderer {
     const map = this.map;
     if (!map) return;
     this.camera.fit(map.bounds, this.view, 4);
+    this.cameraMoved();
+    this.redrawStatic();
+  }
+
+  // --- Zoom et déplacement -------------------------------------------------
+
+  /** Zoome autour d'un point de l'écran (geste en cours : le décor est redessiné à la fin). */
+  zoomAt(factor: number, x: number, y: number): boolean {
+    const changed = this.camera.zoomAt(factor, x, y);
+    if (changed) this.cameraMoved();
+    return changed;
+  }
+
+  /** Zoom par les boutons : autour du centre de la zone visible, décor redessiné aussitôt. */
+  zoomStep(factor: number): void {
+    if (this.zoomAt(factor, this.view.x + this.view.width / 2, this.view.y + this.view.height / 2)) this.settle();
+  }
+
+  panBy(dx: number, dy: number): boolean {
+    const changed = this.camera.panBy(dx, dy);
+    if (changed) this.cameraMoved();
+    return changed;
+  }
+
+  get zoom(): number {
+    return this.camera.zoom;
+  }
+
+  /** Fin d'un geste : le décor est redessiné net. */
+  settle(): void {
+    if (this.layerStale) this.redrawStatic();
+  }
+
+  /** La caméra a changé : tailles et hauteurs à l'écran à recalculer, décor à redessiner. */
+  private cameraMoved(): void {
+    const map = this.map;
+    if (!map) return;
+    this.layerStale = true;
     this.unit = clamp(this.camera.scale / theme.referenceScale, theme.minUnit, theme.maxUnit);
     const buildings = new Map(map.buildings.map((b) => [b.id, b]));
     this.slotLift = new Map(
@@ -84,12 +128,28 @@ export class Renderer {
         return [s.id, liftPx(this.camera, b ? buildingTopHeight(b) : s.elevation)];
       }),
     );
+  }
+
+  private redrawStatic(): void {
+    const map = this.map;
+    if (!map) return;
     const ctx = get2d(this.staticLayer);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     drawCity(
-      { ctx, cam: this.camera, unit: this.unit, width: this.width, height: this.height, shadowCanvas: this.shadowLayer, dpr: this.dpr },
+      {
+        ctx,
+        cam: this.camera,
+        unit: this.unit,
+        width: this.width,
+        height: this.height,
+        shadowCanvas: this.shadowLayer,
+        dpr: this.dpr,
+        visible: this.camera.worldRect(this.width, this.height),
+      },
       map,
     );
+    this.layerCamera = { scale: this.camera.scale, offsetX: this.camera.offsetX, offsetY: this.camera.offsetY };
+    this.layerStale = false;
   }
 
   /** Point de l'écran où se trouve le haut du support d'un emplacement. */
@@ -107,8 +167,7 @@ export class Renderer {
     const cam = this.camera;
     const u = this.unit;
     const time = state.realTime;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(this.staticLayer, 0, 0);
+    this.drawStaticLayer();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
     this.drawEntryPulses(game.map, time);
@@ -156,6 +215,23 @@ export class Renderer {
 
     const b = this.baseTop;
     drawBaseGauge(ctx, cam.sx(b.at.x), cam.sy(b.at.y) - liftPx(cam, b.height) - 16 * u, u, game.baseHp, game.baseMaxHp, effects.baseShake);
+  }
+
+  /** Décor : tel quel, ou agrandi et décalé pendant un geste (redessiné net à la fin). */
+  private drawStaticLayer(): void {
+    const ctx = this.ctx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (!this.layerStale) {
+      ctx.drawImage(this.staticLayer, 0, 0);
+      return;
+    }
+    const cam = this.camera;
+    const k = cam.scale / this.layerCamera.scale;
+    ctx.fillStyle = theme.ground;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.setTransform(k, 0, 0, k, this.dpr * (cam.offsetX - this.layerCamera.offsetX * k), this.dpr * (cam.offsetY - this.layerCamera.offsetY * k));
+    ctx.drawImage(this.staticLayer, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   /** Les entrées des virus pulsent pour rester repérables d'un coup d'œil. */

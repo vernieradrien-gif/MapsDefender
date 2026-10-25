@@ -25,6 +25,8 @@
   "hud.speed": "Vitesse",
   "hud.speedValue": "x{speed}",
   "hud.pause": "Pause",
+  "hud.zoomIn": "Zoomer",
+  "hud.zoomOut": "Dézoomer",
 
   "tower.pulverisateur.name": "Pulvérisateur",
   "tower.diffuseur.name": "Diffuseur",

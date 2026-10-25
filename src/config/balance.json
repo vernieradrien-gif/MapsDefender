@@ -132,9 +132,11 @@
     "baseMaxDistanceFromPathEnd": 1
   },
   "osm": {
-    "zoneWidth": 350,
-    "zoneHeight": 660,
-    "decorMargin": 70,
+    "zoneWidth": 500,
+    "zoneHeight": 900,
+    "decorMargin": 90,
+    "graphMargin": 220,
+    "entryLead": 60,
     "entryMargin": 1.5,
     "streetWidths": {
       "primary": 12,

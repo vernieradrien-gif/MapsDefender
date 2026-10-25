@@ -31,6 +31,8 @@ export const icons = {
     '<circle cx="12" cy="12" r="9" fill="rgba(255,255,255,.9)" stroke="#d8dce6" stroke-width="2"/>' +
       '<path d="M12 8v8M8 12h8" stroke="#1f9e93" stroke-width="2.4" stroke-linecap="round"/>',
   ),
+  zoomIn: svg('<circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15.5 15.5L21 21M10.5 7.5v6M7.5 10.5h6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'),
+  zoomOut: svg('<circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15.5 15.5L21 21M7.5 10.5h6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'),
   upgrade: svg(
     '<circle cx="12" cy="12" r="10" fill="#2bb3a6"/><path d="M12 17V7.5M7.8 11.5L12 7.3l4.2 4.2" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>',
   ),
