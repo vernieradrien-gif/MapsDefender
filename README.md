@@ -4,7 +4,7 @@ Tower defense mobile (portrait, une main) joué dans les rues d'un vrai quartier
 Des **virus** stylisés entrent dans le quartier par toutes les rues qui y mènent ; tu les neutralises avec des **dispositifs sanitaires** installés sur les toits, pour protéger le **bâtiment central**.
 Cahier des charges complet : [`docs/cahier-des-charges.md`](docs/cahier-des-charges.md).
 
-**État : jalon 3.** La carte du jeu est un vrai quartier : **Villagexpo**, à Saint-Michel-sur-Orge (Essonne), importé d'OpenStreetMap, avec zoom. Quatre dispositifs, cinq virus, améliorations, revente, boss ; gemmes et améliorations permanentes, sauvegarde de la partie, écrans d'accueil, publicités de **test**, application Android.
+**État : jalon 4.** On joue où l'on veut : une adresse, un lieu ou sa position donne une carte construite à partir des vraies rues d'OpenStreetMap (Villagexpo, à Saint-Michel-sur-Orge, reste fournie avec le jeu). Quatre dispositifs, cinq virus, améliorations, revente, boss ; gemmes et améliorations permanentes, sauvegarde, publicités de **test**, application Android.
 
 Données cartographiques **© OpenStreetMap contributors**, sous licence [ODbL](https://www.openstreetmap.org/copyright).
 
@@ -30,7 +30,9 @@ L'appli affiche les vraies publicités AdMob **de test** de Google (bannière «
 
 ## Comment jouer
 
-- **Accueil** : choisis la carte (Villagexpo ou la démo, avec ton record), puis **Jouer**. Si une partie est en cours, **Reprendre la partie** la relance à la dernière vague terminée.
+- **Accueil** : touche une des cartes récentes (avec ton record), puis **Jouer**. Si une partie est en cours, **Reprendre la partie** la relance à la dernière vague terminée.
+- **Choisir un lieu** : tape une adresse, une rue ou un lieu, touche **Chercher**, puis le bon résultat ; ou touche **Ma position**. Choisis le rayon du quartier (300, 400 ou 500 m). Le jeu télécharge les rues et les bâtiments, construit la carte, puis montre l'**aperçu du tracé** (rues, itinéraires des virus, entrées, base) : touche **Jouer ici**. Les cartes créées restent sur l'appareil et se rouvrent sans réseau. **Quartier imaginaire** crée un quartier inventé, même hors connexion.
+- Avec une adresse précise (avec un numéro), la base est le bâtiment à cette adresse ; sinon, le bâtiment le plus imposant du quartier.
 - Tu as 10 s de préparation avant la vague 1.
 - **Zoom** : pince avec deux doigts, ou utilise les boutons **+ / −** en bas à droite ; fais glisser un doigt pour déplacer la carte.
 - Touche un **toit marqué d'un ⊕** près d'une rue (ou un **socle** au sol) : un menu en arc propose les 4 dispositifs. Un dispositif trop cher est grisé.
@@ -60,6 +62,7 @@ npm run build      # vérification TypeScript (code et scripts) + build de produ
 npm run import-map # réimporte Villagexpo depuis OpenStreetMap (--offline : rejoue la dernière réponse)
 npm run simulate   # parties automatiques sur 20 quartiers types + Villagexpo (équilibrage)
 npm run captures   # captures Playwright (Pixel 7) dans docs/captures/ et mesure de fluidité
+npm run test-places # essai sur 20 adresses variées (réseau) → docs/essai-adresses.md ; --offline rejoue
 ```
 
 `npm run captures` demande une fois `npx playwright install chromium`.
@@ -79,24 +82,43 @@ src/
   game/     simulation pure : Game, vagues, économie, tourelles, ciblage, adaptation à la carte,
             progression permanente (gemmes), instantané de sauvegarde, joueurs automatiques
   geo/      graphe des rues et itinéraires, OSM (projection, simplification, bâtiments), assemblage de carte,
-            carte réelle (maps/villagexpo.json), carte de démonstration, générateur de quartiers types
+            client Nominatim / Overpass (osmClient, http), génération d'une carte depuis un lieu (placeMap,
+            places, mapWorker), carte réelle (maps/villagexpo.json), démonstration, quartiers types
   render/   Canvas 2D pseudo-3D : caméra (zoom), ville, virus, dispositifs, effets
   ui/       HUD, gestes (pincer, glisser), menus radiaux, écrans d'accueil, améliorations, paramètres, fin de partie
   ads/      interface des publicités : AdMob (Android, identifiants de test) ou fausse publicité (web), règles de rythme
-  storage/  localStorage protégé, progression versionnée, partie sauvegardée
+  storage/  localStorage protégé, progression versionnée, partie sauvegardée, cartes en cache (IndexedDB)
   config/   balance.json : tout l'équilibrage et les règles de carte (documenté dans src/config/README.md)
   i18n/     textes (fr.json)
 public/     confidentialite.html (politique de confidentialité)
 android/    projet Android généré par Capacitor
-scripts/    import-osm.ts, simulate.ts, captures.ts (lancés avec tsx)
+scripts/    import-osm.ts, simulate.ts, captures.ts, test-places.ts (lancés avec tsx)
 docs/       cahier des charges, captures d'écran
 ```
 
-Le jeu reçoit une **carte** (`GameMap` dans `src/game/types.ts`) : itinéraires, entrées, emplacements, base et bâtiment de base, rues, bâtiments, surfaces et arbres. Les fonctions de `src/geo` (projection, découpe, graphe, simplification, bâtiments, assemblage) sont pures : le jalon 4 les réutilisera pour construire une carte à partir de n'importe quelle adresse.
+Le jeu reçoit une **carte** (`GameMap` dans `src/game/types.ts`) : itinéraires, entrées, emplacements, base et bâtiment de base, rues, bâtiments, surfaces et arbres. Les fonctions de `src/geo` (projection, découpe, graphe, simplification, bâtiments, assemblage) sont pures ; seuls `osmClient` et `http` touchent au réseau.
 
 ## Décisions prises
 
 Choix faits sans validation explicite, à revoir si besoin.
+
+### Jalon 4 : carte depuis n'importe quel lieu
+
+- **Choisir un lieu** : un champ d'adresse et un bouton **Chercher** (pas d'autocomplétion, au plus une requête Nominatim toutes les 1,1 s). Jusqu'à 5 résultats ; les doublons (même nom, même commune, à moins de 400 m : la place, sa station de métro, ses rues) sont fusionnés. **Ma position** : la position n'est demandée qu'à l'appui ; le nom du lieu vient de Nominatim (recherche inverse), la carte reste centrée sur la position.
+- **Rayon** : 300, 400 (par défaut) ou 500 m. La zone de jeu garde la forme portrait de Villagexpo et suit le rayon : 1,25 × 2,25 fois le rayon (375 × 675, 500 × 900, 625 × 1 125 m). Le choix du rayon dure le temps de la session.
+- **Une requête Overpass par carte** : les rues sur la zone et 220 m autour (les virus viennent de l'extérieur), mais les bâtiments, parcs et plans d'eau seulement sur la zone et ses 90 m de décor : la réponse est environ 40 % plus légère. Le serveur dispose de 20 s ; l'appli attend 25 s au plus par serveur, puis essaie le suivant (overpass-api.de, puis overpass.kumi.systems et overpass.private.coffee, qui semblent partager la même machine). L'écran de chargement l'indique (« Serveur occupé : essai du serveur de secours 1 »). Sur Android, les requêtes passent par le système avec un User-Agent StreetDefense ; sur le web, le navigateur envoie l'adresse du site.
+- **Construction dans un worker** : l'écran de chargement reste animé et **Annuler** répond tout de suite. La plantation des arbres utilise maintenant un index spatial : même résultat, 5 fois plus vite (construction de Villagexpo : 850 → 160 ms sur PC).
+- **Carte jouable ou message clair** (§ 4 « Cas dégradés ») : la carte doit passer la validation (itinéraires jusqu'à la base, 25 à 60 emplacements) et avoir des itinéraires de **600 m en moyenne**. Sinon le rayon est agrandi de 100 m, jusqu'à 600 m (une nouvelle requête à chaque fois) ; sinon, **quartier imaginaire** avec un message. Si les serveurs ne répondent pas : message, **Réessayer**, et la possibilité de jouer un quartier imaginaire. Adresse introuvable : message.
+- **Base** : adresse avec numéro → le bâtiment qui contient le point géocodé, sinon le plus proche à moins de 25 m (s'il est près d'une rue) ; sinon la règle du bâtiment le plus imposant ou central. Les constructions souterraines (parkings, stations : `layer` négatif, `location=underground`…) sont ignorées : à Lyon, le parking sous la place Bellecour devenait la base.
+- **Même adresse, même carte** : graine tirée de l'adresse normalisée (minuscules, sans accents ni ponctuation) et du rayon ; pour une position, des coordonnées arrondies. **Cache IndexedDB** : clé = coordonnées arrondies à 4 décimales (environ 10 m) + rayon ; la carte construite y est gardée et se rouvre hors ligne. 20 cartes au plus : les moins récemment jouées sont oubliées, jamais la carte choisie ni celle de la partie sauvegardée. Chaque carte porte la version du générateur : une carte construite par une version plus ancienne est reconstruite quand on redemande le lieu. En navigation privée (IndexedDB indisponible), les cartes ne vivent que le temps de la session (message).
+- **Quartier imaginaire** : un des quartiers types de la simulation (grille, diagonales, dense), 2 ou 3 entrées, à la taille du rayon, avec des arbres ; il est enregistré comme les autres cartes pour pouvoir reprendre la partie.
+- **Accueil** : les 3 cartes les plus récentes (la carte choisie d'abord) et le bouton **Choisir un lieu**. L'écran du lieu liste toutes les cartes enregistrées.
+- **Aperçu du tracé** : vue à plat de la zone (rues, itinéraires en rouge, entrées, base) avec le nombre d'entrées, d'itinéraires, la longueur moyenne et le nombre d'emplacements, et une note si la zone a été agrandie, si la base est à l'adresse, ou si le lieu est remplacé par un quartier imaginaire.
+- **Bâtiments publics reconnaissables** (révision 2) : d'après les étiquettes OSM ou le nom, les lieux de culte ont un **clocher avec sa flèche** (à l'extrémité ouest, ou nord) et un toit à deux pans, les mairies un **drapeau tricolore**, les écoles un **toit jaune**. Les autres modèles (maisons à deux pans, hauteur selon `building:levels`) existaient déjà.
+- **Android** : permissions de localisation déclarées (demandées seulement à l'appui sur **Ma position**).
+- **Version** : 0.4.0.
+- **Essai sur 20 adresses** (critère du jalon) : `npm run test-places` (grandes villes, village perché, montagne, îles, aéroport, quartier d'affaires, Bruxelles, adresse avec numéro, adresse introuvable). **Pas encore lancé jusqu'au bout** : le 25/10/2026 au soir, tous les serveurs Overpass publics étaient en panne ; les résultats iront dans `docs/essai-adresses.md`. Déjà vérifié à la main dans le navigateur : place Bellecour à Lyon (20 entrées, 51 itinéraires de 740 m en moyenne, 60 emplacements), message « serveurs indisponibles » avec Réessayer, quartier imaginaire, zone agrandie, reprise d'une partie sur une carte enregistrée.
+- **Écart possible : « carte jouable en moins de 8 s sur 4G »**. Une fois la réponse reçue, la construction prend moins d'une seconde ; mais le délai dépend surtout des serveurs Overpass publics. Le 25/10/2026 au soir, ils étaient saturés pendant des heures (aucune réponse, même à une requête minuscule) : il faut alors patienter ou jouer une carte enregistrée. Si la fréquentation grandit, le cahier des charges prévoit des cartes de grandes villes précalculées dans le dépôt.
 
 ### Jalon 3 : écrans, sauvegarde, publicités, Android
 
@@ -191,5 +213,5 @@ Décisions toujours valables : rendu pseudo-3D sur Canvas 2D sans moteur 3D, dé
 - **Fluidité** : la simulation tourne à 60 pas/s fixes et l'affichage interpole les positions (écrans 90/120 Hz).
 - **Vitesse** : le choix x1/x2/x3 est mémorisé sur l'appareil.
 - **Erreurs** : en cas de plantage, le message s'affiche à l'écran.
-- **Pas encore de PWA installable** (manifeste, mode hors ligne sur le web) : prévu au jalon 5. L'application Android du jalon 3 fonctionne déjà sans réseau.
+- **Pas encore de PWA installable** (manifeste, mode hors ligne sur le web) : prévu au jalon 5. L'application Android fonctionne déjà sans réseau (cartes fournies, cartes enregistrées, quartier imaginaire).
 - **Outils** : Vite 8, TypeScript 7, Vitest 5, Node 22 ; tsx pour les scripts, Playwright pour les captures, Capacitor 8 pour Android.
