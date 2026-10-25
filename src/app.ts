@@ -346,6 +346,7 @@ export class App {
       }
     }
     if (this.home.visible) this.showHome();
+    else if (this.placeScreen.visible) this.refreshPlaces();
   }
 
   /** Clés des cartes à ne pas oublier (carte en cours, partie sauvegardée). */
