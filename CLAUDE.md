@@ -59,6 +59,7 @@ npm run build    # vérification TypeScript (code + scripts) + build de producti
 npm run import-map  # réimporte la carte réelle (--offline : rejoue scripts/.cache)
 npm run simulate    # équilibrage : parties automatiques sur 20 quartiers types
 npm run captures    # captures Playwright (Pixel 7) dans docs/captures/
+npm run test-places # jalon 4 : 20 adresses variées (réseau ; --offline rejoue scripts/.cache/places)
 npx cap sync android                   # après le build : copie dist/ dans le projet Android
 cd android && ./gradlew assembleDebug  # APK de test (JDK 21 + SDK Android) ; la CI le construit aussi
 ```

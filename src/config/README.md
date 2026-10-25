@@ -126,7 +126,7 @@ Construction d'une carte à partir d'OpenStreetMap (`npm run import-map`) ou d'u
 
 | Champ | Rôle |
 |---|---|
-| `zoneWidth`, `zoneHeight` | Zone de jeu (m), centrée sur le lieu (500 × 900, portrait ; le joueur zoome pour voir le détail). |
+| `zoneWidth`, `zoneHeight` | Zone de jeu (m) pour le rayon par défaut (`places.defaultRadius`), centrée sur le lieu (500 × 900, portrait ; le joueur zoome pour voir le détail). Elle suit le rayon choisi. |
 | `decorMargin` | Décor dessiné autour de la zone (m). Au moins `entryLead`, pour que l'arrivée des virus soit dessinée. |
 | `graphMargin` | Le réseau des rues est construit sur la zone plus cette marge (220 m) : les virus arrivent par les rues qui viennent de l'extérieur. Au moins `entryLead`. |
 | `entryLead` | Les virus apparaissent à cette distance avant le bord de la zone, sur la rue qui y entre (60 m). Une entrée est un bout du réseau élargi situé au moins à `entryLead` / 2 hors de la zone. |
@@ -142,11 +142,29 @@ Construction d'une carte à partir d'OpenStreetMap (`npm run import-map`) ou d'u
 | `annexMaxArea`, `houseMaxArea`, `commercialMinArea` | Sans étiquette précise : abri sous `annexMaxArea`, maison sous `houseMaxArea`, immeuble sous `commercialMinArea`, grand bâtiment au-delà (m²). |
 | `levelHeight` | Hauteur d'un niveau (3 m). |
 | `defaultHeights` | Hauteur des murs (m) par type quand OSM ne donne ni hauteur ni niveaux. Elle donne le bonus de portée. |
-| `gableMinRectangularity` | Une maison a un toit à deux pans si son emprise remplit au moins cette part de son rectangle englobant. |
+| `gableMinRectangularity` | Une maison ou un lieu de culte a un toit à deux pans si son emprise remplit au moins cette part de son rectangle englobant. |
 | `baseProximity` | Choix de la base : score = emprise × hauteur / (1 + (distance au centre / `baseProximity`)²). |
+| `addressMaxDistance` | Adresse précise (avec numéro) : la base est le bâtiment qui contient le point géocodé, ou le plus proche à moins de cette distance (25 m). |
 | `baseMaxStreetDistance` | La base doit être à moins de cette distance d'une rue (m). |
 | `paletteCount` | Nombre de variantes de couleurs des bâtiments. |
 | `trees` | Arbres décoratifs : tentatives par hectare (`density`, `parkDensity`, `woodDensity`), écart minimal (`spacing`), rayon du feuillage (`radius`), variantes de couleurs (`paletteCount`). |
+
+## `places`
+
+Cartes créées dans l'appli à partir d'une adresse, d'un lieu ou de la position du joueur (écran « Choisir un lieu »).
+
+| Champ | Rôle |
+|---|---|
+| `radii` | Rayons proposés au joueur (300, 400, 500 m). La zone de jeu vaut `osm.zoneWidth` × `osm.zoneHeight` multipliée par rayon / `defaultRadius`. |
+| `defaultRadius` | Rayon choisi au départ (400 m), un des `radii`. |
+| `maxRadius`, `radiusStep` | Lieu sans carte jouable : le rayon est agrandi de `radiusStep` (100 m) jusqu'à `maxRadius` (600 m), avec une nouvelle requête Overpass à chaque fois ; ensuite, quartier imaginaire. |
+| `minAverageRouteLength` | Longueur moyenne minimale des itinéraires (600 m, cahier des charges) ; en dessous, la zone est agrandie. |
+| `geocodeResults` | Résultats demandés à Nominatim (5), doublons retirés. |
+| `nominatimInterval` | Écart minimal entre deux requêtes Nominatim (1,1 s ; règle d'usage : une par seconde). |
+| `overpassTimeout` | Temps de calcul accordé au serveur Overpass (20 s). |
+| `requestTimeout` | Attente maximale d'une réponse (25 s) avant d'essayer le serveur suivant. |
+| `cacheMaxMaps` | Cartes gardées sur l'appareil (20) ; les moins récemment jouées partent d'abord. |
+| `fallbackAttempts` | Graines essayées pour obtenir un quartier imaginaire jouable (8). |
 
 ## `progression`
 
