@@ -1,9 +1,9 @@
 import { t } from '../i18n';
 import { el, escapeHtml } from './dom';
-import { icons, towerIcon, viruses } from './icons';
+import { icons, viruses } from './icons';
 
 /** Écran superposé (accueil, pause, fin de partie). */
-class Overlay {
+export class Overlay {
   readonly root: HTMLElement;
   protected readonly panel: HTMLElement;
 
@@ -35,67 +35,15 @@ class Overlay {
   }
 }
 
-export interface StartInfo {
-  /** Nom de la carte jouée. */
-  mapName: string;
-  /** Mention de la source des données (cartes OSM), sinon null. */
-  attribution: string | null;
-  /** La carte réelle était invalide : carte de démonstration à la place. */
-  fallback: boolean;
-  /** Dispositifs proposés : nom, rôle et prix, affichés sous les consignes. */
-  towers: { id: string; name: string; role: string; cost: number }[];
-}
-
-export class StartScreen extends Overlay {
-  private readonly debugNote: HTMLElement;
-
-  constructor(parent: HTMLElement, info: StartInfo, onPlay: () => void) {
-    super(parent, 'overlay-start');
-    const step = (icon: string, key: string) =>
-      `<li><span class="step-icon">${icon}</span><span>${escapeHtml(t(key))}</span></li>`;
-    this.panel.append(
-      el('div', 'mascots', viruses.map((m, i) => `<span class="mascot mascot-${i}">${m}</span>`).join('')),
-      el('h1', 'title', escapeHtml(t('app.title'))),
-      el('p', 'tagline', escapeHtml(t('app.tagline'))),
-      el('p', 'map-name', escapeHtml(t('start.map', { name: info.mapName }))),
-    );
-    if (info.fallback) this.panel.append(el('p', 'fallback-note', escapeHtml(t('start.fallback'))));
-    this.panel.append(
-      el(
-        'ul',
-        'steps',
-        step(icons.marker, 'start.step1') + step(icons.entry, 'start.step2') + step(icons.base, 'start.step3'),
-      ),
-      el(
-        'div',
-        'start-towers',
-        info.towers
-          .map(
-            (tower) =>
-              `<div class="start-tower">${towerIcon(tower.id)}<span><strong>${escapeHtml(tower.name)}</strong>` +
-              `<small>${escapeHtml(tower.role)}</small></span><em>${escapeHtml(t('tower.cost', { cost: tower.cost }))}</em></div>`,
-          )
-          .join(''),
-      ),
-    );
-    this.debugNote = el('p', 'debug-note hidden');
-    this.panel.append(this.debugNote, this.button(t('start.play'), 'button-primary button-large', onPlay));
-    if (info.attribution) this.panel.append(el('p', 'attribution', escapeHtml(t('start.attribution'))));
-  }
-
-  setDebugMoney(money: number | null): void {
-    this.debugNote.classList.toggle('hidden', money === null);
-    if (money !== null) this.debugNote.textContent = t('start.debug', { money });
-  }
-}
-
 export class PauseScreen extends Overlay {
-  constructor(parent: HTMLElement, onResume: () => void, onRestart: () => void) {
+  constructor(parent: HTMLElement, onResume: () => void, onRestart: () => void, onHome: () => void) {
     super(parent, 'overlay-pause');
     this.panel.append(
       el('h2', 'title', escapeHtml(t('pause.title'))),
       this.button(t('pause.resume'), 'button-primary button-large', onResume),
       this.button(t('pause.restart'), 'button-secondary', onRestart),
+      this.button(t('pause.home'), 'button-secondary', onHome),
+      el('p', 'tagline small', escapeHtml(t('pause.saved'))),
     );
   }
 }
@@ -107,15 +55,34 @@ export interface EndResult {
   totalWaves: number;
   kills: number;
   baseHp: number;
+  /** Gemmes gagnées par cette partie (doublées si la pub a été regardée). */
+  gems: number;
+  /** « Continuer » est proposé (défaite, une fois par partie). */
+  canRevive: boolean;
+  /** « Doubler les gemmes » est proposé (une fois par partie). */
+  canDouble: boolean;
+}
+
+export interface EndHandlers {
+  onReplay(): void;
+  onHome(): void;
+  onRevive(): void;
+  onDouble(): void;
+  onShare(): void;
 }
 
 export class EndScreen extends Overlay {
   private readonly content: HTMLElement;
+  private readonly actions: HTMLElement;
 
-  constructor(parent: HTMLElement, onReplay: () => void) {
+  constructor(
+    parent: HTMLElement,
+    private readonly handlers: EndHandlers,
+  ) {
     super(parent, 'overlay-end');
     this.content = el('div');
-    this.panel.append(this.content, this.button(t('end.replay'), 'button-primary button-large', onReplay));
+    this.actions = el('div', 'end-actions');
+    this.panel.append(this.content, this.actions);
   }
 
   showResult(r: EndResult): void {
@@ -133,8 +100,26 @@ export class EndScreen extends Overlay {
       `<div class="end-score"><span>${escapeHtml(t('end.score'))}</span><strong>${r.score}</strong></div>` +
       row(t('end.wave'), t('hud.waveValue', { current: r.wave, total: r.totalWaves })) +
       row(t('end.kills'), r.kills) +
-      row(t('end.baseHp'), r.baseHp);
+      row(t('end.baseHp'), r.baseHp) +
+      `<div class="end-gems">${icons.gem}<strong>${escapeHtml(t('end.gems', { gems: r.gems }))}</strong></div>`;
+    const h = this.handlers;
+    this.actions.replaceChildren();
+    if (r.canRevive) this.actions.append(this.adButton(t('end.revive'), 'button-primary button-large', h.onRevive));
+    if (r.canDouble && r.gems > 0) this.actions.append(this.adButton(t('end.double'), 'button-gold', h.onDouble));
+    this.actions.append(
+      this.button(t('end.replay'), r.canRevive ? 'button-secondary' : 'button-primary button-large', h.onReplay),
+    );
+    const links = el('div', 'menu-row');
+    links.append(this.button(t('end.home'), 'button-secondary', h.onHome), this.button(t('end.share'), 'button-secondary', h.onShare));
+    this.actions.append(links);
     this.show();
+  }
+
+  /** Bouton qui lance une pub récompensée (mention « pub » visible). */
+  private adButton(label: string, className: string, onClick: () => void): HTMLButtonElement {
+    const b = this.button(label, className, onClick);
+    b.append(el('span', 'ad-tag', escapeHtml(t('ad.tag'))));
+    return b;
   }
 }
 

@@ -1,21 +1,31 @@
-// Interface publicitaire unique du jeu. Au jalon 3, une implémentation AdMob
-// (Capacitor, identifiants de TEST uniquement, consentement UMP) la remplacera
-// sur Android. Sur le web, la version factice ne montre rien.
-// Règle : jamais de publicité pendant une vague.
+import { Capacitor } from '@capacitor/core';
+import { createAdMobService } from './admob';
+import { createFakeAdService } from './fakeAd';
+
+// Interface publicitaire unique du jeu. Sur Android (Capacitor) : AdMob avec
+// les identifiants de TEST uniquement et le consentement RGPD (UMP). Sur le
+// web : une fausse publicité de quelques secondes, pour tester les parcours.
+// Règle : jamais de publicité pendant une vague (voir policy.ts).
 
 export type RewardedResult = 'rewarded' | 'dismissed' | 'unavailable';
 
+export type RewardedPlacement = 'double-gems' | 'continue' | 'boost';
+
 export interface AdService {
+  /** Prépare le service (consentement RGPD au premier lancement sur Android). */
+  prepare(): Promise<void>;
   /** Pub récompensée ; résout 'rewarded' si le joueur l'a regardée jusqu'au bout. */
-  showRewarded(placement: string): Promise<RewardedResult>;
+  showRewarded(placement: RewardedPlacement): Promise<RewardedResult>;
   /** Interstitiel entre deux parties. */
-  showInterstitial(placement: string): Promise<void>;
+  showInterstitial(): Promise<void>;
+  /** Bannière facultative de l'accueil (Android seulement). */
+  showBanner(): void;
+  hideBanner(): void;
+  /** Formulaire de choix publicitaires (RGPD), si disponible. */
+  showPrivacyOptions(): Promise<boolean>;
+  readonly native: boolean;
 }
 
-/** Version factice pour le web : aucune publicité, aucune récompense. */
-export function createWebAdService(): AdService {
-  return {
-    showRewarded: async () => 'unavailable',
-    showInterstitial: async () => {},
-  };
+export function createAdService(fakeAdSeconds: number): AdService {
+  return Capacitor.isNativePlatform() ? createAdMobService() : createFakeAdService(fakeAdSeconds);
 }

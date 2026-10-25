@@ -105,6 +105,12 @@ export class Renderer {
     return changed;
   }
 
+  /** Revient à la carte entière (changement de carte). */
+  resetView(): void {
+    this.camera.reset();
+    this.cameraMoved();
+  }
+
   get zoom(): number {
     return this.camera.zoom;
   }
