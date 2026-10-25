@@ -149,9 +149,10 @@ describe('dispositifs sanitaires', () => {
     const slowed = newGame();
     slowed.placeTower(1, 'purificateur');
     const time = firstHitTime(slowed);
-    expect(free).toBeCloseTo(100 / 28, 1);
+    const speed = testConfig().enemies.find((e) => e.id === 'virus')!.speed;
+    expect(free).toBeCloseTo(100 / speed, 1);
     // Le champ couvre environ 78 m des 100 m de la rue.
-    expect(time).toBeGreaterThan(free + 1.5);
+    expect(time).toBeGreaterThan(free * 1.4);
     expect(slowed.kills).toBe(0);
   });
 
@@ -164,7 +165,7 @@ describe('dispositifs sanitaires', () => {
     expect(enemy.slow).toBeCloseTo(0.4, 10);
     const before = enemy.distance;
     game.step(1 / 60);
-    expect(enemy.distance - before).toBeCloseTo((28 * 0.6) / 60, 6);
+    expect(enemy.distance - before).toBeCloseTo((enemy.config.speed * 0.6) / 60, 6);
   });
 
   it('le laser UV frappe instantanément, sans projectile', () => {

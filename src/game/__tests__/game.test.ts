@@ -73,7 +73,7 @@ describe('partie : vagues', () => {
   it('les virus qui atteignent la base lui retirent des PV', () => {
     const game = newGame();
     game.callNextWave();
-    // Dernier virus apparu à 4,5 s, arrivé vers 8,1 s ; la vague 2 part à 10,5 s.
+    // Dernier virus apparu à 4,5 s, arrivé vers 7,4 s ; la vague 2 part à 10,5 s.
     run(game, 9);
     expect(game.baseHp).toBe(20 - 6);
     expect(game.kills).toBe(0);

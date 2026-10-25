@@ -7,7 +7,8 @@ import type { TowerSlot } from './types';
 
 // Joueurs automatiques pour l'équilibrage (npm run simulate) et les tests.
 // - « moyen » : pose dès qu'il peut, sur un bon emplacement pris un peu au
-//   hasard, alterne les tourelles sans réfléchir, améliore de temps en temps ;
+//   hasard parmi les meilleurs, alterne les tourelles sans réfléchir,
+//   améliore de temps en temps ;
 // - « bon » : choisit à chaque fois l'action la plus rentable (emplacement,
 //   type de tourelle selon la vague, amélioration), quitte à économiser.
 
@@ -76,7 +77,7 @@ function createGoodBot(game: Game): () => void {
         support += damageValue(t.config, t.damage, t.fireInterval, wave);
       }
     }
-    return covered * support * (stats.slow / (1 - stats.slow)) * 0.35;
+    return covered * support * (stats.slow / (1 - stats.slow)) * 0.6;
   };
 
   return () => {
@@ -132,7 +133,8 @@ function createAverageBot(game: Game, seed: number): () => void {
     const free = ranked.filter((s) => !game.towerAt(s.id));
     const want = game.config.towers.find((t) => t.id === cycle[placed % cycle.length]) ?? typical;
     if (free.length > 0 && game.money >= want.cost) {
-      const pool = free.slice(0, Math.max(1, Math.ceil(free.length * 0.5)));
+      // Il vise les rues proches de la base sans calculer : un emplacement au hasard parmi les meilleurs 35 %.
+      const pool = free.slice(0, Math.max(1, Math.ceil(free.length * 0.35)));
       const slot = pool[Math.floor(rng.next() * pool.length)]!;
       if (game.placeTower(slot.id, want.id) === 'ok') placed++;
       return;

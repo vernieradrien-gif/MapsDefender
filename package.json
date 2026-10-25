@@ -6,12 +6,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc --noEmit -p scripts && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "import-map": "tsx scripts/import-osm.ts"
+    "import-map": "tsx scripts/import-osm.ts",
+    "simulate": "tsx scripts/simulate.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
