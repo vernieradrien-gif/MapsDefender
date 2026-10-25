@@ -160,6 +160,7 @@
     "defaultHeights": { "house": 6, "apartments": 12, "public": 9, "commercial": 7, "annex": 2.6 },
     "gableMinRectangularity": 0.88,
     "baseProximity": 80,
+    "addressMaxDistance": 25,
     "baseMaxStreetDistance": 60,
     "paletteCount": 6,
     "trees": {
@@ -170,6 +171,19 @@
       "radius": [2.6, 4.2],
       "paletteCount": 4
     }
+  },
+  "places": {
+    "radii": [300, 400, 500],
+    "defaultRadius": 400,
+    "maxRadius": 600,
+    "radiusStep": 100,
+    "minAverageRouteLength": 600,
+    "geocodeResults": 5,
+    "nominatimInterval": 1.1,
+    "overpassTimeout": 20,
+    "requestTimeout": 25,
+    "cacheMaxMaps": 20,
+    "fallbackAttempts": 8
   },
   "progression": {
     "gemFactor": 0.18,

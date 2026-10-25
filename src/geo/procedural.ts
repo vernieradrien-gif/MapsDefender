@@ -182,7 +182,8 @@ export function districtLayout(spec: DistrictSpec): { zone: Bounds; streets: Str
 }
 
 /** Quartier type complet, prêt à jouer. */
-export function generateDistrict(spec: DistrictSpec, config: GameConfig) {
+/** Quartier type jouable. Sans arbres par défaut (simulation) ; avec arbres et un nom pour une carte de secours. */
+export function generateDistrict(spec: DistrictSpec, config: GameConfig, options: { name?: string; trees?: boolean } = {}) {
   const kind = KINDS[spec.kind];
   const { zone, streets, areas } = districtLayout(spec);
   const rng = new Rng(spec.seed ^ 0x5bd1e995);
@@ -193,7 +194,7 @@ export function generateDistrict(spec: DistrictSpec, config: GameConfig) {
     kind: b.height > 10 ? 'apartments' : 'house',
   }));
   return assembleMap(
-    { id: spec.id, name: spec.id, seed: spec.seed, zone, streets, buildings, areas, trees: false },
+    { id: spec.id, name: options.name ?? spec.id, seed: spec.seed, zone, streets, buildings, areas, trees: options.trees ?? false },
     config,
   );
 }

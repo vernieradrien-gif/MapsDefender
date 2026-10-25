@@ -3,12 +3,12 @@ import type { Area, Building, Street } from '../game/types';
 import { hashString, toBuilding } from './buildings';
 import { clipPolygonToRect, clipPolylineToRect, douglasPeucker, interiorPoint, polygonArea } from './geometry';
 import { assembleMap, expand, type MapSource } from './mapBuilder';
-import { extractFeatures, type GeoBox, type OverpassResponse } from './osm';
+import { extractFeatures, overpassQuery, type GeoBox, type OverpassResponse } from './osm';
 import { localProjection, type LatLon } from './projection';
 
-// Carte de jeu à partir d'un lieu (géocodé par Nominatim) et de la réponse
-// Overpass correspondante. Fonctions pures : le réseau est interrogé ailleurs
-// (script d'import aujourd'hui, appli au jalon 4).
+// Carte de jeu à partir d'un lieu (géocodé par Nominatim ou position GPS) et
+// de la réponse Overpass correspondante. Fonctions pures : le réseau est
+// interrogé ailleurs (script d'import, ou appli via osmClient).
 
 export const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
 
@@ -18,35 +18,56 @@ export interface OsmPlace {
   /** Nom affiché. */
   name: string;
   center: LatLon;
+  /** Rayon choisi (m) ; par défaut places.defaultRadius. La zone de jeu suit le rayon. */
+  radius?: number;
+  /** Texte d'où dérive la graine (adresse normalisée et rayon) ; par défaut les coordonnées. */
+  seedKey?: string;
+  /** Adresse précise (avec numéro) : la base est le bâtiment au point géocodé. */
+  precise?: boolean;
 }
 
-/** Zone de jeu (m), centrée sur le lieu. */
-export function playZone(config: GameConfig) {
-  const w = config.osm.zoneWidth / 2;
-  const h = config.osm.zoneHeight / 2;
+/** Zone de jeu (m), centrée sur le lieu, à la taille du rayon. */
+export function playZone(config: GameConfig, radius = config.places.defaultRadius) {
+  const k = radius / config.places.defaultRadius;
+  const w = (config.osm.zoneWidth * k) / 2;
+  const h = (config.osm.zoneHeight * k) / 2;
   return { minX: -w, minY: -h, maxX: w, maxY: h };
 }
 
-/** Emprise géographique à demander à Overpass : la zone de jeu, son décor et les abords du réseau. */
-export function queryBox(place: OsmPlace, config: GameConfig): GeoBox {
+function geoBox(place: OsmPlace, margin: number, config: GameConfig): GeoBox {
   const projection = localProjection(place.center);
-  const area = expand(playZone(config), Math.max(config.osm.decorMargin, config.osm.graphMargin));
+  const area = expand(playZone(config, place.radius), margin);
   const nw = projection.toLatLon({ x: area.minX, y: area.minY });
   const se = projection.toLatLon({ x: area.maxX, y: area.maxY });
   return { south: se.lat, west: nw.lon, north: nw.lat, east: se.lon };
 }
 
+/** Emprise géographique à demander à Overpass : la zone de jeu, son décor et les abords du réseau. */
+export function queryBox(place: OsmPlace, config: GameConfig): GeoBox {
+  return geoBox(place, Math.max(config.osm.decorMargin, config.osm.graphMargin), config);
+}
+
+/** Requête Overpass d'un lieu : rues sur les abords du réseau, décor sur la zone de décor seulement. */
+export function placeQuery(place: OsmPlace, config: GameConfig): string {
+  return overpassQuery(queryBox(place, config), {
+    timeout: config.places.overpassTimeout,
+    decorBox: geoBox(place, config.osm.decorMargin, config),
+  });
+}
+
 /** Graine stable dérivée du lieu et de la taille de la zone. */
 export function placeSeed(place: OsmPlace, config: GameConfig): number {
+  if (place.seedKey) return hashString(place.seedKey);
   const { lat, lon } = place.center;
-  return hashString(`${lat.toFixed(5)},${lon.toFixed(5)},${config.osm.zoneWidth}x${config.osm.zoneHeight}`);
+  const zone = playZone(config, place.radius);
+  return hashString(`${lat.toFixed(5)},${lon.toFixed(5)},${zone.maxX * 2}x${zone.maxY * 2}`);
 }
 
 /** Quartier réel : rues, bâtiments et surfaces projetés et découpés à la zone de décor. */
 export function osmMapSource(place: OsmPlace, response: OverpassResponse, config: GameConfig): MapSource {
   const rules = config.osm;
   const features = extractFeatures(response, localProjection(place.center));
-  const zone = playZone(config);
+  const zone = playZone(config, place.radius);
   const decor = expand(zone, rules.decorMargin);
 
   const widthOf = (highway: string) => rules.streetWidths[highway] ?? rules.streetWidths.residential ?? 8;
@@ -84,6 +105,7 @@ export function osmMapSource(place: OsmPlace, response: OverpassResponse, config
     buildings,
     areas,
     center: { x: 0, y: 0 },
+    ...(place.precise ? { baseAt: { x: 0, y: 0 } } : {}),
     attribution: OSM_ATTRIBUTION,
   };
 }

@@ -1,5 +1,5 @@
 import type { OsmRulesConfig } from '../config';
-import type { Building, BuildingKind, Vec2 } from '../game/types';
+import type { Building, BuildingKind, Landmark, Vec2 } from '../game/types';
 import { douglasPeucker, minimumBoundingRect, polygonArea } from './geometry';
 
 // Bâtiments réels (OSM) : usage, hauteur et forme du toit, au plus près des
@@ -39,6 +39,35 @@ export function classifyBuilding(tags: Record<string, string>, area: number, rul
   if (area < rules.houseMaxArea) return 'house';
   if (area < rules.commercialMinArea) return 'apartments';
   return 'commercial';
+}
+
+const WORSHIP = new Set(['church', 'chapel', 'cathedral', 'temple', 'mosque', 'synagogue', 'basilica', 'shrine']);
+const SCHOOLS = new Set(['school', 'kindergarten', 'college', 'university']);
+
+/** Bâtiment public reconnaissable (§ 4 « Rendu ») : lieu de culte, mairie, école. */
+export function landmarkOf(tags: Record<string, string>): Landmark | null {
+  const type = tags.building ?? '';
+  const amenity = tags.amenity ?? '';
+  const name = tags.name ?? '';
+  if (WORSHIP.has(type) || amenity === 'place_of_worship' || /^(église|eglise|chapelle|cathédrale|basilique|temple|mosquée|synagogue)(\s|$)/i.test(name)) {
+    return 'worship';
+  }
+  if (type === 'townhall' || amenity === 'townhall' || /^(mairie|hôtel de ville|hotel de ville)(\s|$)/i.test(name)) return 'townhall';
+  if (SCHOOLS.has(type) || SCHOOLS.has(amenity) || /^(école|ecole|collège|college|lycée|lycee|groupe scolaire)(\s|$)/i.test(name)) {
+    return 'school';
+  }
+  return null;
+}
+
+/** Construction souterraine (parking, station) : ni dessinée, ni base, ni emplacement. */
+export function isUnderground(tags: Record<string, string>): boolean {
+  const layer = parseFloat(tags.layer ?? '');
+  return (
+    tags.location === 'underground' ||
+    tags.parking === 'underground' ||
+    tags.building === 'underground' ||
+    (Number.isFinite(layer) && layer < 0)
+  );
 }
 
 /** Hauteur des murs : `height`, sinon niveaux × hauteur d'un niveau, sinon valeur par défaut du type. */
@@ -84,16 +113,20 @@ export function toBuilding(
   rules: OsmRulesConfig,
   paletteCount: number,
 ): Building | null {
+  if (isUnderground(tags)) return null;
   const footprint = cleanRing(ring, rules.footprintTolerance);
   if (footprint.length < 3) return null;
   const area = polygonArea(footprint);
   if (area < rules.buildingMinArea) return null;
   const kind = classifyBuilding(tags, area, rules);
+  const landmark = landmarkOf(tags);
   const height = buildingHeight(tags, kind, rules);
   const shape = tags['roof:shape'];
   const rect = minimumBoundingRect(footprint);
   const rectangular = area / rect.area >= rules.gableMinRectangularity;
-  const gable = rectangular && (shape === 'gabled' || (kind === 'house' && shape !== 'flat'));
+  // Maisons et lieux de culte presque rectangulaires : toit à deux pans, sauf toit plat déclaré.
+  const pitched = kind === 'house' || landmark === 'worship';
+  const gable = rectangular && (shape === 'gabled' || (pitched && shape !== 'flat'));
   return {
     id,
     footprint: gable ? rect.corners : footprint,
@@ -101,6 +134,7 @@ export function toBuilding(
     roof: gable ? 'gable' : 'flat',
     palette: hashString(`${id}:${area.toFixed(1)}`) % paletteCount,
     kind,
+    ...(landmark ? { landmark } : {}),
     ...(tags.name ? { name: tags.name } : {}),
   };
 }

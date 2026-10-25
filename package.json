@@ -1,7 +1,7 @@
 {
   "name": "streetdefense",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Tower defense mobile joué sur les rues réelles (OpenStreetMap).",
   "type": "module",
   "scripts": {
@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "import-map": "tsx scripts/import-osm.ts",
     "simulate": "tsx scripts/simulate.ts",
-    "captures": "npm run build && tsx scripts/captures.ts"
+    "captures": "npm run build && tsx scripts/captures.ts",
+    "test-places": "tsx scripts/test-places.ts"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",

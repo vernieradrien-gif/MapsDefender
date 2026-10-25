@@ -3,7 +3,7 @@ import { distance } from '../game/path';
 import { Rng } from '../game/rng';
 import type { Area, Bounds, Building, EntryMarker, GameMap, MapPath, Street, Vec2 } from '../game/types';
 import { generateTrees, type TreePlanting } from './city';
-import { clipPolylineToRect, interiorPoint, polygonArea, polylineToPolygonDistance } from './geometry';
+import { clipPolylineToRect, distanceToPolygon, interiorPoint, polygonArea, polylineToPolygonDistance } from './geometry';
 import { buildStreetGraph, coverRoutes, routePoints, type GraphEdge, type StreetGraph } from './graph';
 import { attachPoint, simplifyStreetGraph } from './simplify';
 import { placeTowerSlots } from './slots';
@@ -31,6 +31,8 @@ export interface MapSource {
   areas: Area[];
   /** Bâtiment à protéger ; à défaut, le plus imposant ou le plus central. */
   baseBuildingId?: number;
+  /** Adresse précise : la base est le bâtiment à ce point (ou le plus proche, à moins de osm.addressMaxDistance). */
+  baseAt?: Vec2;
   /** Centre du lieu, pour le choix de la base (par défaut le centre de la zone). */
   center?: Vec2;
   attribution?: string;
@@ -53,6 +55,8 @@ export interface MapReport {
   slots: number;
   roofSlots: number;
   baseName: string | null;
+  /** La base est le bâtiment à l'adresse demandée. */
+  baseAtAddress: boolean;
 }
 
 /** Zone agrandie d'une marge. */
@@ -124,6 +128,27 @@ export function chooseBaseBuilding(
 }
 
 /**
+ * Bâtiment à une adresse précise : celui qui contient le point, sinon le plus
+ * proche à moins de `addressMaxDistance`, s'il est assez près d'une rue.
+ */
+export function buildingAt(
+  buildings: readonly Building[],
+  graph: StreetGraph,
+  at: Vec2,
+  rules: OsmRulesConfig,
+): Building | null {
+  const candidates = buildings
+    .filter((b) => b.kind !== 'annex')
+    .map((b) => ({ b, d: distanceToPolygon(at, b.footprint) }))
+    .filter(({ d }) => d <= rules.addressMaxDistance)
+    .sort((x, y) => x.d - y.d || x.b.id - y.b.id);
+  for (const { b } of candidates) {
+    if (graph.edges.some((e) => polylineToPolygonDistance(e.points, b.footprint) <= rules.baseMaxStreetDistance)) return b;
+  }
+  return null;
+}
+
+/**
  * Raccourcit le début d'un itinéraire : il commence `lead` mètres avant
  * d'entrer dans la zone. Renvoie aussi le point et la direction d'entrée.
  */
@@ -167,10 +192,11 @@ export function assembleMap(source: MapSource, config: GameConfig): { map: GameM
   if (!graph.edges.some((e) => crossesZone(e, zone))) throw new Error('aucune rue dans la zone');
 
   const center = source.center ?? { x: (zone.minX + zone.maxX) / 2, y: (zone.minY + zone.maxY) / 2 };
+  const atAddress = source.baseAt ? buildingAt(source.buildings, graph, source.baseAt, rules) : null;
   const baseBuilding =
     source.baseBuildingId !== undefined
       ? source.buildings.find((b) => b.id === source.baseBuildingId) ?? null
-      : chooseBaseBuilding(source.buildings, graph, zone, center, rules);
+      : atAddress ?? chooseBaseBuilding(source.buildings, graph, zone, center, rules);
   const door = baseBuilding ? interiorPoint(baseBuilding.footprint) : center;
   const attached = attachPoint(graph, door);
   graph = attached.graph;
@@ -258,6 +284,7 @@ export function assembleMap(source: MapSource, config: GameConfig): { map: GameM
     slots: slots.length,
     roofSlots: slots.filter((s) => s.kind === 'roof').length,
     baseName: baseBuilding?.name ?? null,
+    baseAtAddress: atAddress !== null && atAddress === baseBuilding,
   };
   return { map, report };
 }

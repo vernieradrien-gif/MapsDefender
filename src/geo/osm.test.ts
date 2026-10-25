@@ -23,7 +23,18 @@ describe('requête Overpass', () => {
     expect(q).not.toMatch(/footway|motorway|service/);
     for (const tag of ['building', 'leisure', 'landuse', 'natural']) expect(q).toContain(`["${tag}"`);
     expect(q).toContain('(48.620000,2.310000,48.640000,2.330000)');
-    expect(q.endsWith('out geom;')).toBe(true);
+    expect(q.endsWith('out geom qt;')).toBe(true);
+  });
+
+  it('peut demander le décor sur une emprise plus petite que les rues', () => {
+    const q = overpassQuery(
+      { south: 48.62, west: 2.31, north: 48.64, east: 2.33 },
+      { timeout: 20, decorBox: { south: 48.625, west: 2.315, north: 48.635, east: 2.325 } },
+    );
+    expect(q.startsWith('[out:json][timeout:20];')).toBe(true);
+    expect(q).toMatch(/way\["highway"[^;]*\(48\.620000,2\.310000,48\.640000,2\.330000\);/);
+    expect(q).toContain('way["building"](48.625000,2.315000,48.635000,2.325000);');
+    expect(q).not.toContain('way["building"](48.620000');
   });
 });
 
