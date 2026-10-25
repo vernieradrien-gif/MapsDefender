@@ -1,0 +1,25 @@
+{
+  "viewport": {
+    "width": 412,
+    "height": 839
+  },
+  "boss": {
+    "wave": 11,
+    "baseHp": 20
+  },
+  "defeat": {
+    "phase": "defeat",
+    "wave": 5
+  },
+  "victory": {
+    "phase": "victory",
+    "wave": 30,
+    "baseHp": 15
+  },
+  "performance": {
+    "enemies": 176,
+    "fps": 60.2,
+    "renderMs": 12.12
+  },
+  "pageErrors": []
+}

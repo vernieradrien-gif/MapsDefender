@@ -35,6 +35,13 @@ export interface DebugHooks {
   fastForward(seconds: number): void;
   /** Laisse le joueur automatique « bon » construire et améliorer. */
   autoBuild(): void;
+  callNextWave(): boolean;
+  /** Test de charge : base increvable et `count` virus d'un coup. */
+  stress(count: number): void;
+  /** Coût moyen (ms) d'une image dessinée, sur `frames` images. */
+  renderCost(frames: number): number;
+  /** Emplacement libre le plus proche de la base et sa position à l'écran (px CSS). */
+  slotNearBase(): { id: number; x: number; y: number } | null;
 }
 
 const SELECTION_SECONDS = 3;
@@ -372,6 +379,33 @@ export class App {
         }
       },
       autoBuild: () => createBot(this.game, 'bon')(),
+      callNextWave: () => this.game.callNextWave(),
+      stress: (count) => {
+        const config = structuredClone(this.config);
+        config.base.hp = 1_000_000;
+        // Virus lents : ils restent tous à l'écran pendant la mesure.
+        for (const enemy of config.enemies) enemy.speed = 6;
+        Object.assign(config.waves, { countBase: count, countPerWave: 0, spawnIntervalStart: 0.04, spawnIntervalMin: 0.04 });
+        this.game = new Game(this.map, config, { startMoney: 0, mapFactor: 1 });
+        this.loop.reset();
+        this.effects.clear();
+        this.startScreen.hide();
+        this.state = 'playing';
+        this.game.callNextWave();
+      },
+      renderCost: (frames) => {
+        const state = { selectedSlotId: null, selectedTowerId: null, nextRange: null, realTime: this.realTime };
+        const start = performance.now();
+        for (let i = 0; i < frames; i++) this.renderer.render(this.game, 0.5, state, this.effects);
+        return (performance.now() - start) / frames;
+      },
+      slotNearBase: () => {
+        const base = this.map.base;
+        const free = this.map.slots.filter((slot) => !this.game.towerAt(slot.id));
+        free.sort((a, b) => Math.hypot(a.x - base.x, a.y - base.y) - Math.hypot(b.x - base.x, b.y - base.y));
+        const slot = free[0];
+        return slot ? { id: slot.id, ...this.renderer.slotScreen(slot) } : null;
+      },
     };
     Object.assign(window, { streetDefense: hooks });
   }

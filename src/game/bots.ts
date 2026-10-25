@@ -69,15 +69,19 @@ function createGoodBot(game: Game): () => void {
     const covered = sampler.at(slot.x, slot.y, stats.range);
     const wave = Math.max(1, game.wavesLaunched);
     if (config.attack !== 'field') return covered * damageValue(config, stats.damage, stats.fireInterval, wave);
-    // Un champ ralentisseur vaut par les tourelles qui tirent dans sa zone.
+    // Un champ ralentisseur vaut par les tourelles qui tirent dans sa zone,
+    // et presque rien là où un autre champ ralentit déjà (les ralentissements ne se cumulent pas).
     let support = 0;
+    let overlap = 0;
     for (const t of game.towers) {
-      if (t.config.attack === 'field') continue;
-      if (Math.hypot(t.x - slot.x, t.y - slot.y) < t.range + stats.range * 0.5) {
-        support += damageValue(t.config, t.damage, t.fireInterval, wave);
+      const d = Math.hypot(t.x - slot.x, t.y - slot.y);
+      if (t.config.attack === 'field') {
+        if (t.slotId !== slot.id) overlap = Math.max(overlap, Math.max(0, 1 - d / (t.range + stats.range)));
+        continue;
       }
+      if (d < t.range + stats.range * 0.5) support += damageValue(t.config, t.damage, t.fireInterval, wave);
     }
-    return covered * support * (stats.slow / (1 - stats.slow)) * 0.6;
+    return covered * support * (stats.slow / (1 - stats.slow)) * 0.6 * (1 - overlap) ** 2;
   };
 
   return () => {
