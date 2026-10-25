@@ -21,22 +21,24 @@ Tower defense mobile (portrait, une main) joué sur le réseau routier réel aut
 - **Aucune valeur d'équilibrage en dur** : tout est dans `src/config/balance.json` (documenté dans `src/config/README.md`).
 - Le jeu reçoit une **carte** (`GameMap` : chemins + emplacements + base), qu'elle soit codée en dur ou générée.
 - Déterminisme : tout aléa de la simulation passe par le générateur à graine (`src/game/rng.ts`).
-- Tests Vitest pour toute logique de jeu (économie, vagues, ciblage…) et, plus tard, graphe et Dijkstra.
+- Tests Vitest pour toute logique de jeu (économie, vagues, ciblage…) et de carte (graphe, Dijkstra, OSM).
 - Style : modules courts, fonctions pures quand c'est possible, noms en anglais dans le code, commentaires et textes en français.
 
 ## Organisation
 
 ```
 src/
-  game/     simulation pure (Game, vagues, économie, ciblage, boucle à pas fixe)
-  geo/      cartes : carte fixe, générateur de quartier, emplacements toit/socle ; plus tard OSM, graphe, Dijkstra
+  game/     simulation pure (Game, vagues, économie, tourelles, ciblage, boucle à pas fixe, joueurs automatiques)
+  geo/      cartes : graphe des rues, Dijkstra, itinéraires, OSM (projection, simplification, bâtiments),
+            assemblage, carte réelle (maps/), carte de démonstration, générateur de quartiers types
   render/   dessin Canvas 2D pseudo-3D (caméra, ville, personnages, effets)
   ui/       HUD, menu radial, écrans (DOM par-dessus le canvas)
   ads/      interface showRewarded/showInterstitial (factice sur le web)
   storage/  localStorage / IndexedDB
   config/   balance.json + types et validation
   i18n/     textes (fr.json)
-docs/       cahier des charges
+scripts/    import-osm.ts, simulate.ts, captures.ts (tsx)
+docs/       cahier des charges, captures
 ```
 
 ## Méthode
@@ -53,5 +55,8 @@ docs/       cahier des charges
 npm install      # dépendances
 npm run dev      # serveur de développement
 npm test         # tests unitaires (Vitest)
-npm run build    # vérification TypeScript + build de production dans dist/
+npm run build    # vérification TypeScript (code + scripts) + build de production dans dist/
+npm run import-map  # réimporte la carte réelle (--offline : rejoue scripts/.cache)
+npm run simulate    # équilibrage : parties automatiques sur 20 quartiers types
+npm run captures    # captures Playwright (Pixel 7) dans docs/captures/
 ```

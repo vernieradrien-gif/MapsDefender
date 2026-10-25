@@ -2,7 +2,7 @@
 
 Toutes les valeurs de jeu sont ici : le code n'en contient aucune.
 On peut modifier ce fichier directement depuis GitHub (crayon « Edit ») ; le site est reconstruit automatiquement après fusion dans `main`.
-Les tests (`npm test`) vérifient que les valeurs imposées par le cahier des charges sont respectées.
+Les tests (`npm test`) vérifient que les valeurs imposées par le cahier des charges sont respectées ; `npm run simulate` montre l'effet d'un réglage sur 20 quartiers types (vague atteinte par un joueur moyen et un bon joueur).
 
 Unités : distances en **mètres** (unités de carte), durées en **secondes**, vitesses en **m/s**.
 
@@ -19,23 +19,33 @@ Unités : distances en **mètres** (unités de carte), durées en **secondes**, 
 
 | Champ | Rôle |
 |---|---|
-| `hp` | Points de vie de la base : le gâteau compte autant de parts (20). |
+| `hp` | Points de vie du bâtiment à protéger (20). |
 
 ## `economy`
 
 | Champ | Rôle |
 |---|---|
-| `startMoney` | Argent de départ (200). |
+| `startMoney` | Argent de départ pour des itinéraires de longueur de référence (200), multiplié par le facteur de carte (voir `mapScaling`) et arrondi à 5. |
 | `waveBonusBase`, `waveBonusPerWave` | Bonus de fin de vague = `waveBonusBase + waveBonusPerWave × numéro de vague` (10 + 2 × n). |
+| `sellRefund` | Part du total investi (pose + améliorations) rendue à la revente (0,7). |
 
 ## `score`
 
 | Champ | Rôle |
 |---|---|
 | `perWaveCleared` | Points par vague terminée, multipliés par le numéro de la vague. |
-| `perBaseHpOnVictory` | Points par part de gâteau restante en cas de victoire. |
+| `perBaseHpOnVictory` | Points par PV de base restant en cas de victoire. |
 
-Chaque Glouton repoussé rapporte aussi `score × numéro de vague` (voir `enemies`).
+Chaque virus neutralisé rapporte aussi `score × numéro de vague` (voir `enemies`).
+
+## `mapScaling`
+
+Adaptation à la carte : facteur = longueur moyenne des itinéraires / `referenceRouteLength`, borné entre `minFactor` et `maxFactor`. Il multiplie le nombre de virus par vague et l'argent de départ.
+
+| Champ | Rôle |
+|---|---|
+| `referenceRouteLength` | Longueur moyenne de référence (600 m). |
+| `minFactor`, `maxFactor` | Bornes du facteur (0,75 et 1,5). |
 
 ## `waves`
 
@@ -43,35 +53,55 @@ Chaque Glouton repoussé rapporte aussi `score × numéro de vague` (voir `enemi
 |---|---|
 | `total` | Nombre de vagues pour gagner (30). |
 | `prepSeconds` | Préparation avant la vague 1 (10 s). |
-| `interWaveSeconds` | Compte à rebours avant la vague suivante, lancé quand le dernier Glouton d'une vague est apparu. Le bouton « Vague suivante » l'écourte. |
-| `hpGrowth` | PV d'un Glouton = PV de base × `hpGrowth`^(vague − 1) (1,12). |
-| `countBase`, `countPerWave` | Nombre de Gloutons = `countBase + countPerWave × (vague − 1)`, arrondi. |
+| `interWaveSeconds` | Compte à rebours avant la vague suivante, lancé quand le dernier virus d'une vague est apparu. Le bouton « Vague suivante » l'écourte. |
+| `hpGrowth` | PV d'un virus = PV de base × `hpGrowth`^(vague − 1) (1,12), boss compris. |
+| `countBase`, `countPerWave` | Nombre de virus = (`countBase + countPerWave × (vague − 1)`) × facteur de carte, arrondi. |
 | `spawnIntervalStart`, `spawnIntervalPerWave`, `spawnIntervalMin` | Secondes entre deux apparitions : `start + perWave × (vague − 1)`, jamais sous `min`. |
-| `laneOffsetMax` | Décalage latéral aléatoire maximal des Gloutons par rapport à l'axe de la rue (visuel). |
-| `composition` | Types de Gloutons : `enemy` (identifiant), `fromWave` (première vague où il apparaît), `weight` (poids dans la répartition). |
+| `laneOffsetMax` | Décalage latéral aléatoire maximal des virus par rapport à l'axe de la rue (visuel). |
+| `bossEvery` | Un boss ferme la marche toutes les `bossEvery` vagues (10). |
+| `boss` | Identifiant du boss (`megavirus`). |
+| `composition` | Virus ordinaires : `enemy` (identifiant), `fromWave` (première vague où il apparaît), `weight` (poids dans la répartition). |
 
-## `enemies` (les Gloutons)
+## `enemies` (les virus)
 
 | Champ | Rôle |
 |---|---|
-| `id` | Identifiant (`glouton`, `filou`, `bouboule`). Le nom affiché est dans `src/i18n/fr.json` (`enemy.<id>.name`). |
-| `hp` | PV à la vague 1. |
+| `id` | Identifiant (`virus`, `variant`, `amas`, `blinde`, `megavirus`). Le nom affiché est dans `src/i18n/fr.json` (`enemy.<id>.name`). |
+| `hp` | PV à la vague 1 (20, 12, 60, 200, 800). |
 | `speed` | Vitesse (m/s). |
-| `reward` | Pièces gagnées quand il est repoussé (5 à 40). |
-| `baseDamage` | Parts de gâteau mangées s'il atteint le gâteau. |
-| `score` | Points (× numéro de vague) quand il est repoussé. |
+| `reward` | Crédits gagnés quand il est neutralisé (5 à 40). |
+| `baseDamage` | PV retirés à la base s'il l'atteint. |
+| `score` | Points (× numéro de vague) quand il est neutralisé. |
+| `splitInto`, `splitCount` | (Méga-virus) Virus qui apparaissent à sa place quand il est neutralisé : 3 Amas. |
 
-## `towers` (les tourelles)
+## `towers` (les dispositifs sanitaires)
 
 | Champ | Rôle |
 |---|---|
-| `id` | Identifiant (`bulles`, `ballons`). Nom affiché : `tower.<id>.name` dans `src/i18n/fr.json`. |
-| `cost` | Prix en pièces. |
-| `range` | Portée (m). |
-| `damage` | Dégâts par projectile (sur la cible, ou sur toute la zone si `splashRadius` > 0). |
-| `fireInterval` | Secondes entre deux tirs. |
-| `projectileSpeed` | Vitesse de la bulle ou du ballon (m/s). |
-| `splashRadius` | Rayon d'éclaboussure (m) ; 0 = une seule cible. |
+| `id` | Identifiant (`pulverisateur`, `diffuseur`, `laser`, `purificateur`). Nom et rôle affichés : `tower.<id>.name` et `tower.<id>.role` dans `src/i18n/fr.json`. |
+| `attack` | `projectile` (projectile à tête chercheuse), `beam` (rayon instantané : Laser UV) ou `field` (champ ralentisseur permanent : Purificateur). |
+| `cost` | Prix en crédits (50, 100, 150, 75). |
+| `range` | Portée (m) avant bonus de hauteur et améliorations. |
+| `damage` | Dégâts par tir (sur la cible, ou sur toute la zone si `splashRadius` > 0). Inutile pour un champ. |
+| `fireInterval` | Secondes entre deux tirs. Inutile pour un champ. |
+| `projectileSpeed` | Vitesse du projectile (m/s), pour `projectile`. |
+| `splashRadius` | Rayon du nuage (m) ; 0 = une seule cible. |
+| `slow` | Ralentissement dans le champ (0,4 = 40 % plus lent). Plusieurs champs ne se cumulent pas : le plus fort s'applique. |
+| `perLevel` | Gain par niveau d'amélioration : `damage` et `range` en proportion de la valeur de base (0,6 = +60 % par niveau), `fireRate` (l'intervalle entre deux tirs est divisé par 1 + `fireRate` × niveau), `slow` en points ajoutés (0,05 = 5 points). |
+
+## `upgrades`
+
+| Champ | Rôle |
+|---|---|
+| `maxLevel` | Nombre de niveaux d'amélioration (3). |
+| `costGrowth` | Passer au niveau n coûte le prix du dispositif × `costGrowth`^n (1,6). |
+
+## `heightBonus`
+
+| Champ | Rôle |
+|---|---|
+| `rangePerMeter` | Bonus de portée par mètre de hauteur du toit (0,012 = +1,2 %). Aucun bonus sur un socle. |
+| `maxBonus` | Bonus maximal (0,25 = +25 %). |
 
 ## `mapRules`
 
@@ -81,17 +111,43 @@ Règles de construction et de validité d'une carte (emplacements de tourelles).
 |---|---|
 | `slotMinDistanceFromPath` | Distance minimale entre un socle et l'axe d'une rue (m). |
 | `slotMinSpacing` | Distance minimale entre deux emplacements (m). |
-| `roofMaxDistanceFromPath` | Un toit devient emplacement si le centre du bâtiment est à moins de cette distance du chemin (m). |
-| `padOffsetFromPath` | Distance des socles à l'axe du chemin (m). |
-| `padStep` | Pas entre deux socles candidats le long du chemin (m). |
-| `padCoverageRadius` | Un tronçon du chemin sans emplacement dans ce rayon reçoit un socle (m). |
+| `roofMaxDistanceFromPath` | Un toit devient emplacement si le milieu du bâtiment est à moins de cette distance d'un itinéraire (m). Les abris de jardin sont exclus. |
+| `padOffsetFromPath` | Distance des socles à l'axe de l'itinéraire (m). |
+| `padStep` | Pas entre deux socles candidats le long de l'itinéraire (m). |
+| `padCoverageRadius` | Un tronçon d'itinéraire sans emplacement dans ce rayon reçoit un socle (m). |
 | `padClearance` | Écart minimal entre un socle et un bâtiment ou un plan d'eau (m). |
 | `padElevation` | Hauteur d'un socle (m), pour le rendu. |
 | `minSlots`, `maxSlots` | Nombre d'emplacements par carte (25 à 60). |
-| `baseMaxDistanceFromPathEnd` | Écart maximal entre la fin d'un chemin et la base (m). |
+| `baseMaxDistanceFromPathEnd` | Écart maximal entre la fin d'un itinéraire et la base (m). |
+
+## `osm`
+
+Construction d'une carte à partir d'OpenStreetMap (`npm run import-map`) ou d'un quartier généré (`npm run simulate`). Changer ces valeurs demande de réimporter la carte (`npm run import-map -- --offline` suffit).
+
+| Champ | Rôle |
+|---|---|
+| `zoneWidth`, `zoneHeight` | Zone de jeu (m), centrée sur le lieu (350 × 660, portrait). |
+| `decorMargin` | Décor dessiné autour de la zone (m). |
+| `entryMargin` | Une extrémité de rue à moins de cette distance du bord de la zone est une entrée (m). |
+| `streetWidths` | Largeur de chaussée (m) par type de voie OSM. |
+| `graphTolerance` | Distance sous laquelle deux extrémités de rues sont raccordées (m). |
+| `mergeDistance` | Deux carrefours reliés par un tronçon plus court sont fusionnés (8 m). |
+| `minDeadEnd` | Les impasses plus courtes sont supprimées (30 m). |
+| `simplifyTolerance` | Douglas-Peucker des itinéraires (3 m). |
+| `drawTolerance` | Douglas-Peucker des rues dessinées et des surfaces (m). |
+| `footprintTolerance` | Douglas-Peucker des contours de bâtiments (m). |
+| `buildingMinArea` | Les bâtiments plus petits sont ignorés (m²). |
+| `annexMaxArea`, `houseMaxArea`, `commercialMinArea` | Sans étiquette précise : abri sous `annexMaxArea`, maison sous `houseMaxArea`, immeuble sous `commercialMinArea`, grand bâtiment au-delà (m²). |
+| `levelHeight` | Hauteur d'un niveau (3 m). |
+| `defaultHeights` | Hauteur des murs (m) par type quand OSM ne donne ni hauteur ni niveaux. Elle donne le bonus de portée. |
+| `gableMinRectangularity` | Une maison a un toit à deux pans si son emprise remplit au moins cette part de son rectangle englobant. |
+| `baseProximity` | Choix de la base : score = emprise × hauteur / (1 + (distance au centre / `baseProximity`)²). |
+| `baseMaxStreetDistance` | La base doit être à moins de cette distance d'une rue (m). |
+| `paletteCount` | Nombre de variantes de couleurs des bâtiments. |
+| `trees` | Arbres décoratifs : tentatives par hectare (`density`, `parkDensity`, `woodDensity`), écart minimal (`spacing`), rayon du feuillage (`radius`), variantes de couleurs (`paletteCount`). |
 
 ## `debug`
 
 | Champ | Rôle |
 |---|---|
-| `startMoney` | Pièces au départ quand l'adresse se termine par `?debug`. |
+| `startMoney` | Crédits au départ quand l'adresse se termine par `?debug`. |
