@@ -1,3 +1,4 @@
+import type { BuildingKind } from '../game/types';
 import balance from './balance.json';
 
 // Types de la configuration d'équilibrage. Les valeurs vivent dans
@@ -16,10 +17,13 @@ export interface SimulationConfig {
 }
 
 export interface EconomyConfig {
+  /** Argent de départ pour un itinéraire moyen de référence (adapté à la carte, voir mapScaling). */
   startMoney: number;
   /** Bonus de fin de vague = waveBonusBase + waveBonusPerWave × numéro de vague. */
   waveBonusBase: number;
   waveBonusPerWave: number;
+  /** Part du total investi rendue à la revente d'une tourelle (0 à 1). */
+  sellRefund: number;
 }
 
 export interface ScoreConfig {
@@ -27,6 +31,13 @@ export interface ScoreConfig {
   perWaveCleared: number;
   /** Points par PV de base restant en cas de victoire. */
   perBaseHpOnVictory: number;
+}
+
+/** Adaptation à la carte : facteur = longueur moyenne des itinéraires / référence, borné. */
+export interface MapScalingConfig {
+  referenceRouteLength: number;
+  minFactor: number;
+  maxFactor: number;
 }
 
 export interface WaveCompositionEntry {
@@ -41,7 +52,7 @@ export interface WavesConfig {
   interWaveSeconds: number;
   /** PV = PV de base × hpGrowth^(vague − 1). */
   hpGrowth: number;
-  /** Nombre d'ennemis = countBase + countPerWave × (vague − 1). */
+  /** Nombre d'ennemis = (countBase + countPerWave × (vague − 1)) × facteur de carte. */
   countBase: number;
   countPerWave: number;
   spawnIntervalStart: number;
@@ -49,6 +60,10 @@ export interface WavesConfig {
   spawnIntervalMin: number;
   /** Décalage latéral maximal (m) des ennemis par rapport à l'axe de la rue. */
   laneOffsetMax: number;
+  /** Un boss arrive toutes les `bossEvery` vagues (à la fin de la vague). */
+  bossEvery: number;
+  /** Identifiant de l'ennemi boss. */
+  boss: string;
   composition: WaveCompositionEntry[];
 }
 
@@ -57,28 +72,66 @@ export interface EnemyConfig {
   hp: number;
   /** Vitesse en m/s. */
   speed: number;
-  /** Argent gagné quand l'ennemi est tué. */
+  /** Argent gagné quand l'ennemi est neutralisé. */
   reward: number;
   /** PV retirés à la base si l'ennemi l'atteint. */
   baseDamage: number;
   /** Points de score, multipliés par le numéro de la vague. */
   score: number;
+  /** Ennemi qui apparaît à sa place quand il est neutralisé (boss). */
+  splitInto?: string;
+  splitCount?: number;
 }
 
-/** Tourelle : tire des projectiles à tête chercheuse sur l'ennemi le plus avancé. */
+/**
+ * Mode d'action d'une tourelle :
+ * - `projectile` : projectile à tête chercheuse (dégâts de zone si splashRadius > 0) ;
+ * - `beam` : rayon instantané sur une cible ;
+ * - `field` : champ permanent qui ralentit les virus à portée.
+ */
+export type TowerAttack = 'projectile' | 'beam' | 'field';
+
+/** Gain par niveau d'amélioration (proportion de la valeur de base, ou points pour slow). */
+export interface TowerPerLevel {
+  damage: number;
+  range: number;
+  /** Cadence : l'intervalle entre deux tirs est divisé par (1 + fireRate × niveau). */
+  fireRate: number;
+  /** Ralentissement ajouté par niveau (0,05 = 5 points de plus). */
+  slow: number;
+}
+
 export interface TowerConfig {
   id: string;
+  attack: TowerAttack;
   cost: number;
-  /** Portée en mètres. */
+  /** Portée en mètres (avant bonus de hauteur et améliorations). */
   range: number;
-  /** Dégâts par projectile (sur la cible, ou sur toute la zone si splashRadius > 0). */
+  /** Dégâts par tir (sur la cible, ou sur toute la zone si splashRadius > 0). */
   damage: number;
   /** Secondes entre deux tirs. */
   fireInterval: number;
   /** Vitesse du projectile (m/s). */
   projectileSpeed: number;
-  /** Rayon d'éclaboussure (m) ; 0 = une seule cible. */
+  /** Rayon d'éclatement (m) ; 0 = une seule cible. */
   splashRadius: number;
+  /** Ralentissement des virus dans le champ (0,4 = 40 % plus lents). */
+  slow: number;
+  perLevel: TowerPerLevel;
+}
+
+export interface UpgradesConfig {
+  /** Nombre de niveaux d'amélioration par tourelle. */
+  maxLevel: number;
+  /** Coût pour passer au niveau n = coût de la tourelle × costGrowth^n. */
+  costGrowth: number;
+}
+
+export interface HeightBonusConfig {
+  /** Bonus de portée par mètre de hauteur du toit (0,012 = 1,2 %). */
+  rangePerMeter: number;
+  /** Bonus maximal (0,25 = 25 %). */
+  maxBonus: number;
 }
 
 export interface MapRulesConfig {
@@ -86,13 +139,13 @@ export interface MapRulesConfig {
   slotMinDistanceFromPath: number;
   /** Distance minimale entre deux emplacements (m). */
   slotMinSpacing: number;
-  /** Un toit devient emplacement si le centre du bâtiment est à moins de cette distance du chemin (m). */
+  /** Un toit devient emplacement si le centre du bâtiment est à moins de cette distance d'un itinéraire (m). */
   roofMaxDistanceFromPath: number;
-  /** Distance des socles à l'axe du chemin (m). */
+  /** Distance des socles à l'axe de l'itinéraire (m). */
   padOffsetFromPath: number;
-  /** Pas entre deux socles candidats le long du chemin (m). */
+  /** Pas entre deux socles candidats le long de l'itinéraire (m). */
   padStep: number;
-  /** Un tronçon de chemin sans emplacement dans ce rayon reçoit un socle (m). */
+  /** Un tronçon d'itinéraire sans emplacement dans ce rayon reçoit un socle (m). */
   padCoverageRadius: number;
   /** Écart minimal entre un socle et un bâtiment ou un plan d'eau (m). */
   padClearance: number;
@@ -103,16 +156,73 @@ export interface MapRulesConfig {
   baseMaxDistanceFromPathEnd: number;
 }
 
+export interface TreeRules {
+  /** Tentatives de plantation par hectare (jardins, bords de rue). */
+  density: number;
+  /** Tentatives par hectare dans les parcs et les bois. */
+  parkDensity: number;
+  woodDensity: number;
+  /** Écart minimal entre deux arbres (m). */
+  spacing: number;
+  radius: [number, number];
+  paletteCount: number;
+}
+
+/** Construction d'une carte à partir de données OpenStreetMap (ou d'un quartier généré). */
+export interface OsmRulesConfig {
+  /** Zone de jeu (m), centrée sur le lieu. */
+  zoneWidth: number;
+  zoneHeight: number;
+  /** Décor dessiné autour de la zone (m). */
+  decorMargin: number;
+  /** Une extrémité de rue à moins de cette distance du bord est une entrée (m). */
+  entryMargin: number;
+  /** Largeur de chaussée (m) par type de voie OSM. */
+  streetWidths: Record<string, number>;
+  /** Raccordement des extrémités de rue (m). */
+  graphTolerance: number;
+  /** Fusion des carrefours reliés par un tronçon plus court (m). */
+  mergeDistance: number;
+  /** Les impasses plus courtes sont supprimées (m). */
+  minDeadEnd: number;
+  /** Douglas-Peucker des itinéraires (m). */
+  simplifyTolerance: number;
+  /** Douglas-Peucker des rues dessinées et des surfaces (m). */
+  drawTolerance: number;
+  /** Douglas-Peucker des contours de bâtiments (m). */
+  footprintTolerance: number;
+  buildingMinArea: number;
+  /** Sans étiquette précise : abri sous annexMaxArea, maison sous houseMaxArea, immeuble, puis grand bâtiment. */
+  annexMaxArea: number;
+  houseMaxArea: number;
+  commercialMinArea: number;
+  /** Hauteur d'un niveau (m). */
+  levelHeight: number;
+  /** Hauteur des murs (m) quand OSM ne donne ni hauteur ni niveaux. */
+  defaultHeights: Record<BuildingKind, number>;
+  /** Toit à deux pans si surface / rectangle englobant ≥ ce seuil. */
+  gableMinRectangularity: number;
+  /** Choix de la base : score = emprise × hauteur / (1 + (distance au centre / baseProximity)²). */
+  baseProximity: number;
+  baseMaxStreetDistance: number;
+  paletteCount: number;
+  trees: TreeRules;
+}
+
 export interface GameConfig {
   version: number;
   simulation: SimulationConfig;
   base: { hp: number };
   economy: EconomyConfig;
   score: ScoreConfig;
+  mapScaling: MapScalingConfig;
   waves: WavesConfig;
   enemies: EnemyConfig[];
   towers: TowerConfig[];
+  upgrades: UpgradesConfig;
+  heightBonus: HeightBonusConfig;
   mapRules: MapRulesConfig;
+  osm: OsmRulesConfig;
   debug: { startMoney: number };
 }
 
@@ -125,6 +235,9 @@ export function validateConfig(config: GameConfig): string[] {
   const nonNegative = (value: number, name: string) => {
     if (!(Number.isFinite(value) && value >= 0)) errors.push(`${name} doit être >= 0`);
   };
+  const ratio = (value: number, name: string) => {
+    if (!(Number.isFinite(value) && value >= 0 && value <= 1)) errors.push(`${name} doit être entre 0 et 1`);
+  };
 
   positive(config.simulation.stepsPerSecond, 'simulation.stepsPerSecond');
   positive(config.simulation.maxFrameSeconds, 'simulation.maxFrameSeconds');
@@ -136,6 +249,12 @@ export function validateConfig(config: GameConfig): string[] {
   nonNegative(config.economy.startMoney, 'economy.startMoney');
   nonNegative(config.economy.waveBonusBase, 'economy.waveBonusBase');
   nonNegative(config.economy.waveBonusPerWave, 'economy.waveBonusPerWave');
+  ratio(config.economy.sellRefund, 'economy.sellRefund');
+
+  const s = config.mapScaling;
+  positive(s.referenceRouteLength, 'mapScaling.referenceRouteLength');
+  positive(s.minFactor, 'mapScaling.minFactor');
+  if (!(s.maxFactor >= s.minFactor)) errors.push('mapScaling.maxFactor doit être >= minFactor');
 
   const w = config.waves;
   positive(w.total, 'waves.total');
@@ -147,6 +266,7 @@ export function validateConfig(config: GameConfig): string[] {
   positive(w.spawnIntervalStart, 'waves.spawnIntervalStart');
   positive(w.spawnIntervalMin, 'waves.spawnIntervalMin');
   nonNegative(w.laneOffsetMax, 'waves.laneOffsetMax');
+  positive(w.bossEvery, 'waves.bossEvery');
 
   const enemyIds = new Set<string>();
   for (const e of config.enemies) {
@@ -158,6 +278,12 @@ export function validateConfig(config: GameConfig): string[] {
     nonNegative(e.baseDamage, `enemies.${e.id}.baseDamage`);
     nonNegative(e.score, `enemies.${e.id}.score`);
   }
+  for (const e of config.enemies) {
+    if (e.splitInto === undefined) continue;
+    if (!enemyIds.has(e.splitInto) || e.splitInto === e.id) errors.push(`enemies.${e.id}.splitInto invalide`);
+    positive(e.splitCount ?? 0, `enemies.${e.id}.splitCount`);
+  }
+  if (!enemyIds.has(w.boss)) errors.push(`waves.boss : ennemi inconnu ${w.boss}`);
   if (w.composition.length === 0) errors.push('waves.composition est vide');
   for (const c of w.composition) {
     if (!enemyIds.has(c.enemy)) errors.push(`waves.composition : ennemi inconnu ${c.enemy}`);
@@ -175,17 +301,37 @@ export function validateConfig(config: GameConfig): string[] {
     towerIds.add(t.id);
     positive(t.cost, `towers.${t.id}.cost`);
     positive(t.range, `towers.${t.id}.range`);
-    positive(t.damage, `towers.${t.id}.damage`);
-    positive(t.fireInterval, `towers.${t.id}.fireInterval`);
-    positive(t.projectileSpeed, `towers.${t.id}.projectileSpeed`);
+    ratio(t.slow, `towers.${t.id}.slow`);
     nonNegative(t.splashRadius, `towers.${t.id}.splashRadius`);
+    for (const [key, value] of Object.entries(t.perLevel)) nonNegative(value, `towers.${t.id}.perLevel.${key}`);
+    if (t.attack === 'field') {
+      positive(t.slow, `towers.${t.id}.slow`);
+      ratio(t.slow + t.perLevel.slow * config.upgrades.maxLevel, `towers.${t.id}.slow au niveau maximal`);
+    } else if (t.attack === 'projectile' || t.attack === 'beam') {
+      positive(t.damage, `towers.${t.id}.damage`);
+      positive(t.fireInterval, `towers.${t.id}.fireInterval`);
+      if (t.attack === 'projectile') positive(t.projectileSpeed, `towers.${t.id}.projectileSpeed`);
+    } else {
+      errors.push(`towers.${t.id}.attack inconnu`);
+    }
   }
+  positive(config.upgrades.costGrowth, 'upgrades.costGrowth');
+  nonNegative(config.upgrades.maxLevel, 'upgrades.maxLevel');
+  nonNegative(config.heightBonus.rangePerMeter, 'heightBonus.rangePerMeter');
+  nonNegative(config.heightBonus.maxBonus, 'heightBonus.maxBonus');
 
   const r = config.mapRules;
   positive(r.slotMinSpacing, 'mapRules.slotMinSpacing');
   positive(r.padStep, 'mapRules.padStep');
   positive(r.minSlots, 'mapRules.minSlots');
   if (r.maxSlots < r.minSlots) errors.push('mapRules.maxSlots doit être >= minSlots');
+
+  const o = config.osm;
+  positive(o.zoneWidth, 'osm.zoneWidth');
+  positive(o.zoneHeight, 'osm.zoneHeight');
+  positive(o.levelHeight, 'osm.levelHeight');
+  for (const [kind, h] of Object.entries(o.defaultHeights)) positive(h, `osm.defaultHeights.${kind}`);
+  ratio(o.gableMinRectangularity, 'osm.gableMinRectangularity');
   return errors;
 }
 

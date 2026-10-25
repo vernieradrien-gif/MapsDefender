@@ -97,24 +97,46 @@ export function generateBuildings(
   return buildings;
 }
 
-/** Arbres dans les jardins et les parcs, à l'écart des rues, bâtiments, eau et emplacements. */
+/** Plantation des arbres décoratifs. */
+export interface TreePlanting {
+  /** Largeur des trottoirs (m) : les arbres restent hors de la chaussée et du trottoir. */
+  sidewalk: number;
+  /** Tentatives au hasard dans toute la zone (jardins, bords de rue). */
+  attempts: number;
+  /** Tentatives dans un parc ou un bois. */
+  attemptsIn: (area: Area) => number;
+  spacing: number;
+  radius: Range;
+  paletteCount: number;
+}
+
+/** Plantation de la carte de démonstration (style du quartier généré). */
+export const cityPlanting = (style: CityStyle): TreePlanting => ({
+  sidewalk: style.sidewalk,
+  attempts: style.trees.attempts,
+  attemptsIn: (area) => (area.kind === 'park' ? style.trees.parkAttempts : 0),
+  spacing: style.trees.spacing,
+  radius: style.trees.radius,
+  paletteCount: style.trees.paletteCount,
+});
+
+/** Arbres dans les jardins, les parcs et les bois, à l'écart des rues, bâtiments, eau et emplacements. */
 export function generateTrees(
   streets: readonly Street[],
   areas: readonly Area[],
   buildings: readonly Building[],
   slots: readonly TowerSlot[],
   bounds: Bounds,
-  style: CityStyle,
+  cfg: TreePlanting,
   rng: Rng,
 ): Tree[] {
   const trees: Tree[] = [];
-  const cfg = style.trees;
-  const parks = areas.filter((a) => a.kind === 'park');
-  const blocked = areas.filter((a) => a.kind !== 'park');
+  const green = areas.filter((a) => a.kind === 'park' || a.kind === 'wood');
+  const blocked = areas.filter((a) => a.kind === 'water' || a.kind === 'plaza');
 
   const tryPlace = (p: Vec2, spacing: number) => {
     const radius = pick(rng, cfg.radius);
-    if (streets.some((s) => distanceToPolyline(p, s.points) < s.width / 2 + style.sidewalk + radius * 0.6)) return;
+    if (streets.some((s) => distanceToPolyline(p, s.points) < s.width / 2 + cfg.sidewalk + radius * 0.6)) return;
     if (buildings.some((b) => distanceToPolygon(p, b.footprint) < radius * 0.7)) return;
     // Les plans d'eau gardent une rive dégagée (allée du parc).
     if (blocked.some((a) => distanceToPolygon(p, a.polygon) < radius + (a.kind === 'water' ? 6 : 0))) return;
@@ -123,12 +145,13 @@ export function generateTrees(
     trees.push({ x: p.x, y: p.y, radius, palette: Math.floor(rng.next() * cfg.paletteCount) });
   };
 
-  for (const park of parks) {
-    const xs = park.polygon.map((p) => p.x);
-    const ys = park.polygon.map((p) => p.y);
-    for (let i = 0; i < cfg.parkAttempts; i++) {
+  for (const area of green) {
+    const xs = area.polygon.map((p) => p.x);
+    const ys = area.polygon.map((p) => p.y);
+    const attempts = cfg.attemptsIn(area);
+    for (let i = 0; i < attempts; i++) {
       const p = { x: rng.range(Math.min(...xs), Math.max(...xs)), y: rng.range(Math.min(...ys), Math.max(...ys)) };
-      if (pointInPolygon(p, park.polygon)) tryPlace(p, cfg.spacing * 0.8);
+      if (pointInPolygon(p, area.polygon)) tryPlace(p, cfg.spacing * (area.kind === 'wood' ? 0.65 : 0.8));
     }
   }
   for (let i = 0; i < cfg.attempts; i++) {

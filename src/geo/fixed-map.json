@@ -4,6 +4,7 @@
   "seed": 20261024,
   "bounds": { "minX": 0, "minY": 10, "maxX": 220, "maxY": 392 },
   "base": [165, 365],
+  "baseBuilding": { "rect": [172, 346, 206, 384], "height": 9 },
   "pathStreetWidth": 10,
   "paths": [
     {
