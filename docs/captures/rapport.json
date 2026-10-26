@@ -18,9 +18,9 @@
   },
   "performance": {
     "enemies": 177,
-    "fps": 56.7,
-    "renderMs": 11.16
+    "fps": 53.5,
+    "renderMs": 18.38
   },
-  "place": "10 entrées · 23 itinéraires de 775 m en moyenne · 60 emplacements",
+  "place": "20 entrées · 52 itinéraires de 727 m en moyenne · 60 emplacements",
   "pageErrors": []
 }

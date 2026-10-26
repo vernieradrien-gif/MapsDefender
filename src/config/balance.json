@@ -181,7 +181,7 @@
     "geocodeResults": 5,
     "nominatimInterval": 1.1,
     "overpassTimeout": 20,
-    "requestTimeout": 25,
+    "requestTimeout": 45,
     "cacheMaxMaps": 20,
     "fallbackAttempts": 8
   },

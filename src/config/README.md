@@ -162,7 +162,7 @@ Cartes créées dans l'appli à partir d'une adresse, d'un lieu ou de la positio
 | `geocodeResults` | Résultats demandés à Nominatim (5), doublons retirés. |
 | `nominatimInterval` | Écart minimal entre deux requêtes Nominatim (1,1 s ; règle d'usage : une par seconde). |
 | `overpassTimeout` | Temps de calcul accordé au serveur Overpass (20 s). |
-| `requestTimeout` | Attente maximale d'une réponse (25 s) avant d'essayer le serveur suivant. |
+| `requestTimeout` | Attente maximale d'une réponse (45 s) avant d'essayer le serveur suivant. Les serveurs publics chargés mettent souvent 30 à 45 s à répondre. |
 | `cacheMaxMaps` | Cartes gardées sur l'appareil (20) ; les moins récemment jouées partent d'abord. |
 | `fallbackAttempts` | Graines essayées pour obtenir un quartier imaginaire jouable (8). |
 
