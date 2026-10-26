@@ -11,6 +11,8 @@ export interface HudHandlers {
   onZoomOut(): void;
   /** Boost de crédits (pub récompensée), entre deux vagues seulement. */
   onBoost(): void;
+  /** Déplacer la base sur un autre bâtiment (avant la première vague). */
+  onMoveBase(): void;
 }
 
 /** Barre haute (crédits, PV de la base, vague, pause) et barre basse (vague suivante, vitesse). */
@@ -21,6 +23,7 @@ export class Hud {
   readonly zoom: HTMLElement;
   private readonly zoomOut: HTMLButtonElement;
   private readonly boost: HTMLButtonElement;
+  private readonly moveBase: HTMLButtonElement;
   private readonly boostLabel: HTMLElement;
   private readonly money: HTMLElement;
   private readonly hp: HTMLElement;
@@ -75,6 +78,12 @@ export class Hud {
     this.boost.append(this.boostLabel);
     this.boost.addEventListener('click', handlers.onBoost);
 
+    // Avant la première vague : déplacer la base sur un autre bâtiment.
+    this.moveBase = el('button', 'move-base-button hidden', icons.base);
+    this.moveBase.type = 'button';
+    this.moveBase.append(el('span', '', t('hud.moveBase')));
+    this.moveBase.addEventListener('click', handlers.onMoveBase);
+
     this.zoom = el('div', 'zoom-controls');
     const zoomButton = (icon: string, label: string, onClick: () => void) => {
       const b = el('button', 'icon-button zoom-button', icon);
@@ -86,7 +95,7 @@ export class Hud {
     };
     zoomButton(icons.zoomIn, t('hud.zoomIn'), handlers.onZoomIn);
     this.zoomOut = zoomButton(icons.zoomOut, t('hud.zoomOut'), handlers.onZoomOut);
-    parent.append(this.top, this.bottom, this.zoom, this.boost);
+    parent.append(this.top, this.bottom, this.zoom, this.boost, this.moveBase);
   }
 
   /** Le bouton « − » est inactif quand toute la carte est déjà visible. */
@@ -118,6 +127,7 @@ export class Hud {
     const boosted = game.boostedWave !== null && game.boostedWave >= game.wavesLaunched ? game.boostedWave : null;
     const offer = game.canBoost();
     this.boost.classList.toggle('hidden', !offer && boosted === null);
+    this.moveBase.classList.toggle('hidden', !(game.phase === 'running' && game.wavesLaunched === 0));
     this.boost.classList.toggle('active', !offer && boosted !== null);
     this.boost.disabled = !offer;
     setText(this.boostLabel, offer ? t('hud.boostOffer') : t('hud.boostActive', { wave: boosted ?? 0 }));

@@ -224,6 +224,13 @@ async function main(): Promise<void> {
     await page.waitForTimeout(300);
     await shot(page, '12-parametres');
 
+    // Déplacer la base : avant la première vague, la carte en plein écran, on touche un bâtiment.
+    await open(page, '?debug');
+    await hook(page, (h) => h.start());
+    await page.getByRole('button', { name: 'Déplacer la base' }).click();
+    await page.waitForTimeout(500);
+    await shot(page, '18-deplacer-la-base');
+
     // Publicité de test (web) : boost de crédits avant la première vague.
     await open(page, '?debug');
     await hook(page, (h) => h.start());

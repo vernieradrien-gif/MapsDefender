@@ -171,7 +171,7 @@ export function importProgress(code: string, current: Progress): Progress | null
 
 export function loadSavedGame(): SavedGame | null {
   const saved = readJSON<SavedGame | null>(SAVE_KEY, null);
-  return saved && isRecord(saved.snapshot) && saved.snapshot.version === 1 ? saved : null;
+  return saved && isRecord(saved.snapshot) && saved.snapshot.version === 2 ? saved : null;
 }
 
 export function saveGame(snapshot: GameSnapshot, now: number): void {

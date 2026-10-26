@@ -36,12 +36,19 @@ export class Overlay {
 }
 
 export class PauseScreen extends Overlay {
-  constructor(parent: HTMLElement, onResume: () => void, onRestart: () => void, onHome: () => void) {
+  constructor(
+    parent: HTMLElement,
+    onResume: () => void,
+    onRestart: () => void,
+    onMoveBase: () => void,
+    onHome: () => void,
+  ) {
     super(parent, 'overlay-pause');
     this.panel.append(
       el('h2', 'title', escapeHtml(t('pause.title'))),
       this.button(t('pause.resume'), 'button-primary button-large', onResume),
       this.button(t('pause.restart'), 'button-secondary', onRestart),
+      this.button(t('pause.moveBase'), 'button-secondary', onMoveBase),
       this.button(t('pause.home'), 'button-secondary', onHome),
       el('p', 'tagline small', escapeHtml(t('pause.saved'))),
     );

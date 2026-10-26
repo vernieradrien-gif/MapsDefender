@@ -147,8 +147,14 @@ describe('sauvegarde de la partie', () => {
     expect(state(copy)).toEqual(state(original));
   });
 
-  it('refuse une sauvegarde d’une autre carte', () => {
+  it('refuse une sauvegarde d’une autre carte, ou de la même carte modifiée', () => {
     const snap = newGame().snapshot();
     expect(() => Game.restore(createFixedMap(config.mapRules), config, snap)).toThrow();
+    const map = createFixedMap(config.mapRules);
+    const saved = new Game(map, config).snapshot();
+    expect(() => Game.restore(map, config, saved)).not.toThrow();
+    // Base déplacée : même identifiant, autre carte.
+    const moved = { ...map, base: { x: map.base.x + 40, y: map.base.y } };
+    expect(() => Game.restore(moved, config, saved)).toThrow();
   });
 });

@@ -14,13 +14,13 @@
   "victory": {
     "phase": "victory",
     "wave": 30,
-    "baseHp": 3
+    "baseHp": 15
   },
   "performance": {
-    "enemies": 177,
-    "fps": 53.5,
-    "renderMs": 18.38
+    "enemies": 176,
+    "fps": 57.1,
+    "renderMs": 18.11
   },
-  "place": "20 entrées · 52 itinéraires de 727 m en moyenne · 60 emplacements",
+  "place": "20 entrées · 52 itinéraires de 727 m en moyenne · 758 emplacements",
   "pageErrors": []
 }

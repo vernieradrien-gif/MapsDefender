@@ -4,8 +4,9 @@ import { validateMap } from '../game/mapValidation';
 import { distanceToPolyline } from '../game/path';
 import { averageRouteLength } from '../game/scaling';
 import type { Building, Street } from '../game/types';
-import { isConvex, orientedRect } from './geometry';
-import { assembleMap } from './mapBuilder';
+import { createFixedMap } from './fixedMap';
+import { interiorPoint, isConvex, orientedRect } from './geometry';
+import { assembleMap, moveBase } from './mapBuilder';
 import { loadGameMap, villagexpoMap } from './maps';
 
 const config = testConfig();
@@ -16,7 +17,6 @@ describe('carte réelle : Villagexpo (Saint-Michel-sur-Orge)', () => {
   it('est valide et jouable', () => {
     expect(validateMap(map, config.mapRules)).toEqual([]);
     expect(map.slots.length).toBeGreaterThanOrEqual(config.mapRules.minSlots);
-    expect(map.slots.length).toBeLessThanOrEqual(config.mapRules.maxSlots);
     expect(map.paths.length).toBeGreaterThanOrEqual(map.entries.length);
   });
 
@@ -105,5 +105,34 @@ describe('assemblage d’une carte', () => {
     expect(map.slots.length).toBeGreaterThanOrEqual(config.mapRules.minSlots);
     expect(map.slots.some((s) => s.kind === 'pad')).toBe(true);
     expect(map.slots.some((s) => s.buildingId === 2)).toBe(false);
+  });
+});
+
+describe('déplacer la base (sans réseau)', () => {
+  it.each([
+    ['Villagexpo', () => villagexpoMap()],
+    ['carte de démonstration', () => createFixedMap(config.mapRules)],
+  ])('%s : la base passe sur un autre bâtiment, la carte reste jouable', (_, make) => {
+    const map = make();
+    const base = map.buildings.find((b) => b.id === map.baseBuildingId)!;
+    const from = base ? interiorPoint(base.footprint) : map.base;
+    // Un bâtiment de la zone, assez loin de l'ancienne base, qui peut être une base.
+    const candidates = map.buildings
+      .filter((b) => b.kind !== 'annex' && b.id !== map.baseBuildingId)
+      .map((b) => ({ b, at: interiorPoint(b.footprint) }))
+      .filter(({ at }) => at.x > map.bounds.minX + 50 && at.x < map.bounds.maxX - 50 && at.y > map.bounds.minY + 50 && at.y < map.bounds.maxY - 50)
+      .filter(({ at }) => Math.hypot(at.x - from.x, at.y - from.y) > 120);
+    let moved: { id: number; result: ReturnType<typeof moveBase> } | null = null;
+    for (const { b } of candidates.slice(0, 10)) {
+      const result = moveBase(map, b.id, config);
+      if (result) {
+        moved = { id: b.id, result };
+        break;
+      }
+    }
+    expect(moved).not.toBeNull();
+    expect(moved!.result!.map.baseBuildingId).toBe(moved!.id);
+    expect(validateMap(moved!.result!.map, config.mapRules)).toEqual([]);
+    expect(moved!.result!.map.entries.length).toBeGreaterThan(0);
   });
 });

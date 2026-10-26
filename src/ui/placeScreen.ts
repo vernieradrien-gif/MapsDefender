@@ -11,6 +11,8 @@ import { Overlay } from './screens';
 export interface PlaceResult {
   name: string;
   detail: string;
+  /** Remarque (numéro inconnu d'OpenStreetMap…), ou null. */
+  note: string | null;
 }
 
 export interface PlaceScreenState {
@@ -129,7 +131,8 @@ export class PlaceScreen extends Overlay {
         const item = el(
           'button',
           'map-card place-result',
-          `<strong>${escapeHtml(r.name)}</strong>${r.detail ? `<span>${escapeHtml(r.detail)}</span>` : ''}`,
+          `<strong>${escapeHtml(r.name)}</strong>${r.detail ? `<span>${escapeHtml(r.detail)}</span>` : ''}` +
+            (r.note ? `<small class="place-note">${escapeHtml(r.note)}</small>` : ''),
         );
         item.type = 'button';
         item.addEventListener('click', () => h.onPick(i));

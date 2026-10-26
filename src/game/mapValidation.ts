@@ -27,11 +27,9 @@ export function validateMap(map: GameMap, rules: MapRulesConfig): string[] {
   if (map.slots.length < rules.minSlots) {
     errors.push(`pas assez d'emplacements (${map.slots.length} < ${rules.minSlots})`);
   }
-  if (map.slots.length > rules.maxSlots) {
-    errors.push(`trop d'emplacements (${map.slots.length} > ${rules.maxSlots})`);
-  }
 
   const ids = new Set<number>();
+  const roofs = new Set<number>();
   const buildings = new Map(map.buildings.map((b) => [b.id, b]));
   for (const slot of map.slots) {
     if (ids.has(slot.id)) errors.push(`emplacement ${slot.id} en double`);
@@ -41,15 +39,17 @@ export function validateMap(map: GameMap, rules: MapRulesConfig): string[] {
     if (slot.x < minX || slot.x > maxX || slot.y < minY || slot.y > maxY) {
       errors.push(`emplacement ${slot.id} hors de la zone affichée`);
     }
-    if (distance(slot, map.base) < rules.slotMinDistanceFromPath) {
-      errors.push(`emplacement ${slot.id} trop proche de la base`);
-    }
-
     if (slot.kind === 'roof') {
       const building = slot.buildingId === null ? undefined : buildings.get(slot.buildingId);
       if (!building) errors.push(`emplacement ${slot.id} : bâtiment introuvable`);
       else if (!pointInPolygon(slot, building.footprint)) errors.push(`emplacement ${slot.id} hors de son toit`);
+      if (building && building.id === map.baseBuildingId) errors.push(`emplacement ${slot.id} sur la base`);
+      if (slot.buildingId !== null && roofs.has(slot.buildingId)) errors.push(`deux emplacements sur le bâtiment ${slot.buildingId}`);
+      if (slot.buildingId !== null) roofs.add(slot.buildingId);
     } else {
+      if (distance(slot, map.base) < rules.slotMinDistanceFromPath) {
+        errors.push(`socle ${slot.id} trop proche de la base`);
+      }
       for (const street of map.streets) {
         const d = distanceToPolyline(slot, street.points);
         if (d < rules.slotMinDistanceFromPath) {
@@ -63,12 +63,12 @@ export function validateMap(map: GameMap, rules: MapRulesConfig): string[] {
     }
   }
 
-  for (let i = 0; i < map.slots.length; i++) {
-    for (let j = i + 1; j < map.slots.length; j++) {
-      const a = map.slots[i]!;
-      const b = map.slots[j]!;
-      if (distance(a, b) < rules.slotMinSpacing) {
-        errors.push(`emplacements ${a.id} et ${b.id} trop proches`);
+  // Chaque bâtiment a son emplacement, même collé à son voisin ; les socles gardent leurs distances.
+  for (const pad of map.slots) {
+    if (pad.kind !== 'pad') continue;
+    for (const other of map.slots) {
+      if (other.id !== pad.id && (other.kind === 'roof' || other.id > pad.id) && distance(pad, other) < rules.slotMinSpacing) {
+        errors.push(`emplacements ${pad.id} et ${other.id} trop proches`);
       }
     }
   }

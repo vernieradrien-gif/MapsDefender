@@ -54,7 +54,7 @@ Adaptation à la carte : facteur = longueur moyenne des itinéraires / `referenc
 | `total` | Nombre de vagues pour gagner (30). |
 | `prepSeconds` | Préparation avant la vague 1 (10 s). |
 | `interWaveSeconds` | Compte à rebours avant la vague suivante, lancé quand le dernier virus d'une vague est apparu. Le bouton « Vague suivante » l'écourte. |
-| `hpGrowth` | PV d'un virus = PV de base × `hpGrowth`^(vague − 1) (1,12), boss compris. |
+| `hpGrowth` | PV d'un virus = PV de base × `hpGrowth`^(vague − 1) (1,135 ; 1,12 avant qu'il y ait un emplacement sur chaque bâtiment), boss compris. |
 | `countBase`, `countPerWave` | Nombre de virus = (`countBase + countPerWave × (vague − 1)`) × facteur de carte, arrondi. |
 | `spawnIntervalStart`, `spawnIntervalPerWave`, `spawnIntervalMin` | Secondes entre deux apparitions : `start + perWave × (vague − 1)`, jamais sous `min`. |
 | `laneOffsetMax` | Décalage latéral aléatoire maximal des virus par rapport à l'axe de la rue (visuel). |
@@ -110,14 +110,14 @@ Règles de construction et de validité d'une carte (emplacements de tourelles).
 | Champ | Rôle |
 |---|---|
 | `slotMinDistanceFromPath` | Distance minimale entre un socle et l'axe d'une rue (m). |
-| `slotMinSpacing` | Distance minimale entre deux emplacements (m). |
-| `roofMaxDistanceFromPath` | Un toit devient emplacement si le milieu du bâtiment est à moins de cette distance d'un itinéraire (m). Les abris de jardin sont exclus. |
+| `slotMinSpacing` | Distance minimale entre un socle et un autre emplacement ou la base (m). Les toits n'ont pas d'écart minimal : chaque bâtiment a son emplacement. |
 | `padOffsetFromPath` | Distance des socles à l'axe de l'itinéraire (m). |
 | `padStep` | Pas entre deux socles candidats le long de l'itinéraire (m). |
 | `padCoverageRadius` | Un tronçon d'itinéraire sans emplacement dans ce rayon reçoit un socle (m). |
 | `padClearance` | Écart minimal entre un socle et un bâtiment ou un plan d'eau (m). |
 | `padElevation` | Hauteur d'un socle (m), pour le rendu. |
-| `minSlots`, `maxSlots` | Nombre d'emplacements par carte (25 à 60). |
+| `minSlots` | Emplacements au minimum (25) : des socles sont ajoutés si les toits ne suffisent pas. |
+| `maxPads` | Socles au plus (60). Il n'y a pas de maximum pour les toits : chaque bâtiment de la zone a son emplacement. |
 | `baseMaxDistanceFromPathEnd` | Écart maximal entre la fin d'un itinéraire et la base (m). |
 
 ## `osm`
@@ -163,6 +163,8 @@ Cartes créées dans l'appli à partir d'une adresse, d'un lieu ou de la positio
 | `nominatimInterval` | Écart minimal entre deux requêtes Nominatim (1,1 s ; règle d'usage : une par seconde). |
 | `overpassTimeout` | Temps de calcul accordé au serveur Overpass (20 s). |
 | `requestTimeout` | Attente maximale d'une réponse (45 s) avant d'essayer le serveur suivant. Les serveurs publics chargés mettent souvent 30 à 45 s à répondre. |
+| `overpassRounds` | Tours de tous les serveurs avant d'abandonner (2 : un nouvel essai automatique). |
+| `overpassRetryPause` | Pause avant ce nouveau tour quand tous les serveurs sont saturés (30 s, règle d'usage du serveur principal). |
 | `cacheMaxMaps` | Cartes gardées sur l'appareil (20) ; les moins récemment jouées partent d'abord. |
 | `fallbackAttempts` | Graines essayées pour obtenir un quartier imaginaire jouable (8). |
 

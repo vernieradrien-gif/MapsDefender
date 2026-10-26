@@ -18,6 +18,8 @@ export interface LoadingHandlers {
   onBack(): void;
   /** Quartier imaginaire à la place (serveurs indisponibles). */
   onImaginary(): void;
+  /** Choisir soi-même le bâtiment de la base, sur la carte. */
+  onPickBase(): void;
 }
 
 export interface LoadingResult {
@@ -27,6 +29,8 @@ export interface LoadingResult {
   notes: readonly string[];
   /** Carte tirée d'OpenStreetMap (mention de la licence). */
   osm: boolean;
+  /** Le joueur peut choisir la base (carte réelle). */
+  canPickBase: boolean;
 }
 
 export class LoadingScreen extends Overlay {
@@ -101,8 +105,9 @@ export class LoadingScreen extends Overlay {
       el('p', 'preview-stats', escapeHtml(result.stats)),
       ...result.notes.map((note) => el('p', 'preview-note', escapeHtml(note))),
       button(t('loading.play'), 'button-primary button-large', this.handlers.onPlay, icons.play),
-      button(t('loading.back'), 'button-secondary', this.handlers.onBack),
     );
+    if (result.canPickBase) this.content.append(button(t('loading.pickBase'), 'button-secondary', this.handlers.onPickBase, icons.base));
+    this.content.append(button(t('loading.back'), 'button-secondary', this.handlers.onBack));
     if (result.osm) this.content.append(el('p', 'attribution', escapeHtml(t('start.attribution'))));
     this.show();
     // Dessin une fois l'aperçu mis en page (taille connue).

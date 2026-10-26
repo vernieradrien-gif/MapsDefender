@@ -16,7 +16,6 @@ describe('validation de carte', () => {
     const length = new PreparedPath(map.paths[0]!.points).length;
     expect(length).toBeGreaterThanOrEqual(600);
     expect(map.slots.length).toBeGreaterThanOrEqual(rules.minSlots);
-    expect(map.slots.length).toBeLessThanOrEqual(rules.maxSlots);
   });
 
   it('sur la carte fixe, bien bâtie, tout est sur les toits sauf le socle prévu dans le parc', () => {

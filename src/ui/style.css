@@ -1236,3 +1236,86 @@ body {
 .overlay-home .map-card {
   padding: 7px 14px;
 }
+
+/* Mode « Choisir la base » : la carte seule, le bandeau en haut, le zoom à droite. */
+.app.picking .hud,
+.app.picking .boost-button {
+  display: none;
+}
+
+.pick-banner {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background: var(--glass-strong);
+  box-shadow: var(--shadow);
+  z-index: 5;
+}
+
+.pick-icon svg {
+  display: block;
+  width: 28px;
+  height: 28px;
+  color: var(--coral);
+}
+
+.pick-text {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pick-cancel {
+  flex: 0 0 auto;
+  padding: 0 14px;
+  font-size: 15px;
+}
+
+.app.picking .toast {
+  top: calc(max(10px, env(safe-area-inset-top)) + 84px);
+  white-space: normal;
+  text-align: center;
+}
+
+.map-card small.place-note {
+  color: #9a6a00;
+}
+
+/* Avant la première vague : déplacer la base (au-dessus du bouton de boost). */
+.move-base-button {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 136px);
+  min-height: var(--touch);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 0 10px;
+  border: none;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  z-index: 10;
+}
+
+.move-base-button svg {
+  width: 22px;
+  height: 22px;
+  color: var(--coral);
+}
+
+.app.picking .move-base-button {
+  display: none;
+}

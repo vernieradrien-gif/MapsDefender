@@ -96,9 +96,19 @@ export interface Projectile {
 }
 
 /** Partie sauvegardée (données simples, JSON). */
+/**
+ * Empreinte d'une carte : nombre d'emplacements et d'itinéraires, position de
+ * la base. Une sauvegarde faite sur une autre version de la carte (base
+ * déplacée, emplacements refaits) n'est pas reprise.
+ */
+export function mapSignature(map: GameMap): string {
+  return `${map.slots.length}:${map.paths.length}:${map.baseBuildingId ?? '-'}:${Math.round(map.base.x)},${Math.round(map.base.y)}`;
+}
+
 export interface GameSnapshot {
-  version: 1;
+  version: 2;
   mapId: string;
+  mapSignature: string;
   mapFactor: number;
   startMoney: number;
   phase: GamePhase;
@@ -434,8 +444,9 @@ export class Game {
   /** État complet de la partie, en données simples (sauvegarde à chaque fin de vague). */
   snapshot(): GameSnapshot {
     return {
-      version: 1,
+      version: 2,
       mapId: this.map.id,
+      mapSignature: mapSignature(this.map),
       mapFactor: this.mapFactor,
       startMoney: this.startMoney,
       phase: this._phase,
@@ -483,7 +494,9 @@ export class Game {
 
   /** Reprend une partie sauvegardée sur la même carte. */
   static restore(map: GameMap, config: GameConfig, snap: GameSnapshot, bonuses?: GameBonuses): Game {
-    if (snap.version !== 1 || snap.mapId !== map.id) throw new Error('sauvegarde incompatible');
+    if (snap.version !== 2 || snap.mapId !== map.id || snap.mapSignature !== mapSignature(map)) {
+      throw new Error('sauvegarde incompatible');
+    }
     const game = new Game(map, config, {
       mapFactor: snap.mapFactor,
       startMoney: snap.startMoney,

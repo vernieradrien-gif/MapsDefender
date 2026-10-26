@@ -26,7 +26,7 @@ import type { LatLon } from './projection';
  * Version du générateur : une carte en cache construite par une version plus
  * ancienne est reconstruite quand on redemande le lieu (elle reste jouable d'ici là).
  */
-export const PLACE_MAP_VERSION = 1;
+export const PLACE_MAP_VERSION = 2;
 
 /** Description d'une carte générée (cache, accueil, aperçu). */
 export interface PlaceMapInfo {
@@ -51,6 +51,8 @@ export interface PlaceMapInfo {
   slots: number;
   /** La base est le bâtiment à l'adresse demandée. */
   baseAtAddress: boolean;
+  /** La base a été choisie par le joueur (bâtiment touché sur la carte). */
+  baseChosen?: boolean;
   /** Date des données OpenStreetMap. */
   osmDate: string | null;
 }
@@ -173,6 +175,19 @@ export async function generatePlaceMap(target: PlaceTarget, radius: number, deps
 }
 
 const IMAGINARY_KINDS: DistrictKind[] = ['grille', 'diagonales', 'dense', 'grille'];
+
+/** Description mise à jour après un déplacement de la base par le joueur. */
+export function withMovedBase(info: PlaceMapInfo, report: MapReport): PlaceMapInfo {
+  return {
+    ...info,
+    averageRouteLength: Math.round(report.averageRouteLength),
+    routes: report.routes,
+    entries: report.entries,
+    slots: report.slots,
+    baseAtAddress: false,
+    baseChosen: true,
+  };
+}
 
 /** Quartier imaginaire jouable (secours, ou hors connexion), déterminé par la graine. */
 export function imaginaryMap(seed: number, radius: number, name: string, config: GameConfig, now: number): PlaceMap {

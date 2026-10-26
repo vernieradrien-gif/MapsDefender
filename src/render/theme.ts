@@ -95,7 +95,13 @@ export const theme = {
   trunk: '#9a6b47',
 
   pad: { top: '#f4f6f8', side: '#c5cbd6', stripe: '#2bb3a6' },
-  slotMarker: { ring: '#ffffff', fill: 'rgba(255, 255, 255, 0.75)', plus: '#1f9e93' },
+  /**
+   * Repères ⊕ des emplacements libres. Chaque bâtiment en a un : sans zoom, on ne
+   * montre qu'une sélection lisible (à moins de `nearRoute` m d'un itinéraire,
+   * espacés d'au moins `spacing` m ; les autres bâtiments restent touchables) ;
+   * à partir du zoom `allFromZoom`, tous ceux visibles.
+   */
+  slotMarker: { ring: '#ffffff', fill: 'rgba(255, 255, 255, 0.75)', plus: '#1f9e93', nearRoute: 40, spacing: 28, allFromZoom: 2 },
 
   /** Repères d'entrée des virus. */
   entry: { fill: 'rgba(232, 72, 85, 0.22)', ring: '#e84855', arrow: '#ffffff', pulse: 'rgba(232, 72, 85, 0.5)' },
