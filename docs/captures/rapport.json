@@ -17,9 +17,10 @@
     "baseHp": 3
   },
   "performance": {
-    "enemies": 176,
-    "fps": 59,
-    "renderMs": 13.68
+    "enemies": 177,
+    "fps": 53.5,
+    "renderMs": 18.38
   },
+  "place": "20 entrées · 52 itinéraires de 727 m en moyenne · 60 emplacements",
   "pageErrors": []
 }

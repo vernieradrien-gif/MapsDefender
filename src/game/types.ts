@@ -41,6 +41,9 @@ export type RoofShape = 'flat' | 'gable';
 /** Usage du bâtiment : change ses couleurs (maison, immeuble, bâtiment public…). */
 export type BuildingKind = 'house' | 'apartments' | 'public' | 'commercial' | 'annex';
 
+/** Bâtiment public reconnaissable à son dessin : lieu de culte (clocher), mairie (drapeau), école. */
+export type Landmark = 'worship' | 'townhall' | 'school';
+
 export interface Building {
   id: number;
   /** Empreinte au sol (polygone simple, convexe ou non). */
@@ -51,6 +54,7 @@ export interface Building {
   /** Variante de couleurs choisie par le rendu. */
   palette: number;
   kind?: BuildingKind;
+  landmark?: Landmark;
   /** Nom (bâtiments nommés des cartes OSM). */
   name?: string;
 }

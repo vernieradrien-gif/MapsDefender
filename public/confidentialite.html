@@ -72,18 +72,29 @@
 
       <h2>Cartes et adresses (OpenStreetMap)</h2>
       <p>
-        Les cartes viennent d'OpenStreetMap (© OpenStreetMap contributors, licence ODbL). La carte actuelle
-        (Villagexpo) est incluse dans le jeu : aucune adresse n'est envoyée. Quand le choix d'une adresse sera
-        disponible, l'adresse saisie sera envoyée aux services
-        <a href="https://nominatim.org/">Nominatim</a> (pour trouver le lieu) et
-        <a href="https://overpass-api.de/">Overpass</a> (pour télécharger les rues), qui la reçoivent avec
-        l'adresse IP de ton appareil.
+        Les cartes viennent d'OpenStreetMap (© OpenStreetMap contributors, licence ODbL). Les cartes
+        Villagexpo et de démonstration sont incluses dans le jeu : jouer dessus n'envoie rien.
+      </p>
+      <p>
+        Quand tu cherches un lieu (écran « Choisir un lieu »), le texte saisi est envoyé au service
+        <a href="https://nominatim.org/">Nominatim</a> d'OpenStreetMap (voir
+        <a href="https://osmfoundation.org/wiki/Privacy_Policy">sa politique de confidentialité</a>), puis les
+        coordonnées du lieu choisi sont envoyées à un serveur <a href="https://overpass-api.de/">Overpass</a>
+        (overpass-api.de, ou en secours overpass.private.coffee ou celui de VK Maps, maps.mail.ru) pour télécharger les
+        rues et les bâtiments. Ces services reçoivent aussi l'adresse IP de ton appareil, comme tout site web.
+        La recherche ne part qu'à l'appui sur « Chercher » ; il n'y a pas de recherche pendant la frappe.
+      </p>
+      <p>
+        Les cartes créées restent enregistrées sur ton appareil (stockage du navigateur ou de l'appli), pour
+        les rouvrir sans réseau ; elles ne sont envoyées à personne.
       </p>
 
       <h2>Position GPS</h2>
       <p>
-        Le jeu n'utilise pas ta position aujourd'hui. Plus tard, elle ne sera demandée que si tu touches
-        « Ma position », avec l'autorisation de ton appareil, et servira seulement à choisir la carte.
+        Ta position n'est demandée que si tu touches « Ma position », avec l'autorisation de ton appareil.
+        Elle sert seulement à créer la carte autour de toi : ses coordonnées sont envoyées à Nominatim (pour
+        donner un nom au lieu) et à Overpass (pour télécharger les rues), comme pour une adresse. Elle n'est
+        ni suivie ni enregistrée ailleurs que dans la carte créée sur ton appareil.
       </p>
 
       <h2>Hébergement</h2>

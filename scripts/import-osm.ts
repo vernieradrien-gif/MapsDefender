@@ -14,16 +14,12 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/config';
 import { validateMap } from '../src/game/mapValidation';
 import { roundMap } from '../src/geo/mapBuilder';
-import { overpassQuery, type OverpassResponse } from '../src/geo/osm';
-import { buildOsmMap, queryBox, type OsmPlace } from '../src/geo/osmMap';
+import type { OverpassResponse } from '../src/geo/osm';
+import { OVERPASS_MIRRORS } from '../src/geo/osmClient';
+import { buildOsmMap, placeQuery, type OsmPlace } from '../src/geo/osmMap';
 
 const USER_AGENT = 'StreetDefense/0.1 (+https://github.com/vernieradrien-gif/MapsDefender; import de carte)';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
-const OVERPASS_MIRRORS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-];
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -89,7 +85,7 @@ async function main(): Promise<void> {
   const place: OsmPlace = { id, name, center: { lat: Number(found.lat), lon: Number(found.lon) } };
   console.log(`Lieu : ${found.display_name} (${place.center.lat}, ${place.center.lon})`);
 
-  const request = overpassQuery(queryBox(place, config));
+  const request = placeQuery(place, config);
   const response = await cached(`${id}.overpass.json`, () => overpass(request));
   console.log(`Overpass : ${response.elements.length} éléments`);
 

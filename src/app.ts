@@ -8,11 +8,18 @@ import { Game, type Tower } from './game/game';
 import { FixedStepLoop } from './game/loop';
 import { bonusesFrom, buyUpgrade, canBuy, gemsForScore, levelOf, nextCost } from './game/progression';
 import type { GameMap } from './game/types';
+import { createHttp } from './geo/http';
+import { createMapBuilder } from './geo/mapBuilderClient';
 import { loadGameMap, MAP_IDS } from './geo/maps';
+import { OsmClient, OsmError } from './geo/osmClient';
+import { generatePlaceMap, imaginaryMap, PLACE_MAP_VERSION, type MapBuildFn, type PlaceMap, type PlaceMapInfo } from './geo/placeMap';
+import { placeKey, type PlaceTarget } from './geo/places';
+import type { LatLon } from './geo/projection';
 import { t } from './i18n';
 import type { ViewRect } from './render/camera';
 import { Effects } from './render/effects';
 import { Renderer } from './render/renderer';
+import { openMapCache, type MapCache } from './storage/mapCache';
 import {
   clearSavedGame,
   defaultProgress,
@@ -29,7 +36,9 @@ import { el } from './ui/dom';
 import { Hud } from './ui/hud';
 import { towerIcon } from './ui/icons';
 import { attachGestures, findSlotAt } from './ui/input';
-import { HelpScreen, HomeScreen, SettingsScreen, UpgradesScreen, type UpgradeView } from './ui/menus';
+import { LoadingScreen } from './ui/loadingScreen';
+import { HelpScreen, HomeScreen, SettingsScreen, UpgradesScreen, type MapChoice, type UpgradeView } from './ui/menus';
+import { PlaceScreen } from './ui/placeScreen';
 import { RadialMenu } from './ui/radialMenu';
 import { EndScreen, PauseScreen, Toast } from './ui/screens';
 import { TowerMenu, type TowerMenuInfo } from './ui/towerMenu';
@@ -66,6 +75,13 @@ const END_SCREEN_DELAY_MS = 900;
 /** Facteur de zoom des boutons + et −. */
 const ZOOM_STEP = 1.5;
 const SHARE_URL = 'https://vernieradrien-gif.github.io/MapsDefender/';
+/** Cartes fournies avec le jeu (les autres viennent du cache des lieux). */
+const BUILT_IN = new Set<string>(MAP_IDS);
+/** Nombre de cartes récentes sur l'accueil. */
+const HOME_MAPS = 3;
+
+/** Lieu demandé (pour « Réessayer ») : un résultat de recherche ou la position du joueur. */
+type PlaceRequest = { kind: 'target'; target: PlaceTarget } | { kind: 'position'; center: LatLon };
 
 /**
  * Chef d'orchestre : accueil et menus, parties (boucle à pas fixe, sauvegarde,
@@ -98,7 +114,22 @@ export class App {
   private readonly help: HelpScreen;
   private readonly pauseScreen: PauseScreen;
   private readonly endScreen: EndScreen;
+  private readonly placeScreen: PlaceScreen;
+  private readonly loading: LoadingScreen;
   private readonly toast: Toast;
+
+  /** Lieux : cache des cartes générées, service OSM, construction, état de l'écran de choix. */
+  private mapCache: MapCache | null = null;
+  private placeInfos: PlaceMapInfo[] = [];
+  private readonly osm: OsmClient;
+  private builder: MapBuildFn | null = null;
+  private generation: AbortController | null = null;
+  private placeRadius: number;
+  private placeResults: PlaceTarget[] = [];
+  private placeBusy: 'search' | 'locate' | null = null;
+  private placeMessage: { text: string; error: boolean } | null = null;
+  private lastRequest: PlaceRequest | null = null;
+  private readyPlace: PlaceMap | null = null;
 
   private selectedTowerId: number | null = null;
   private selectionExpiresAt = 0;
@@ -115,6 +146,8 @@ export class App {
     if (options.demo) this.progress.settings.mapId = 'fixed-demo';
     this.map = this.loadMap(this.progress.settings.mapId);
     this.startMoney = options.debug ? this.config.debug.startMoney : undefined;
+    this.osm = new OsmClient(createHttp(pkg.version), this.config.places);
+    this.placeRadius = this.config.places.defaultRadius;
     this.game = this.createGame();
     this.loop = new FixedStepLoop(this.config.simulation);
 
@@ -149,8 +182,9 @@ export class App {
     this.toast = new Toast(root);
     this.home = new HomeScreen(root, {
       onPlay: () => this.startNewGame(),
-      onResume: () => this.resumeGame(),
-      onSelectMap: (id) => this.selectMap(id),
+      onResume: () => void this.resumeGame(),
+      onSelectMap: (id) => void this.selectMap(id),
+      onOtherPlace: () => this.openPlaces(),
       onUpgrades: () => this.openMenu(this.upgrades, () => this.refreshUpgrades()),
       onSettings: () => this.openMenu(this.settings),
       onHelp: () => this.openMenu(this.help),
@@ -189,6 +223,30 @@ export class App {
         this.showHome();
       },
     );
+    this.placeScreen = new PlaceScreen(root, {
+      onSearch: (query) => void this.searchPlace(query),
+      onPick: (index) => {
+        const target = this.placeResults[index];
+        if (target) void this.generate({ kind: 'target', target });
+      },
+      onMyPosition: () => void this.locate(),
+      onRadius: (radius) => {
+        this.placeRadius = radius;
+        this.refreshPlaces();
+      },
+      onSelectMap: (id) => void this.selectMap(id),
+      onImaginary: () => void this.imaginary(),
+      onBack: () => this.showHome(),
+    });
+    this.loading = new LoadingScreen(root, {
+      onCancel: () => this.cancelGeneration(),
+      onRetry: () => {
+        if (this.lastRequest) void this.generate(this.lastRequest);
+      },
+      onPlay: () => this.playReadyPlace(),
+      onBack: () => this.openPlaces(),
+      onImaginary: () => void this.imaginary(),
+    });
     this.endScreen = new EndScreen(root, {
       onReplay: () => this.startNewGame(),
       onHome: () => void this.leaveEndScreen(),
@@ -222,6 +280,7 @@ export class App {
 
     this.layout();
     this.showHome();
+    void this.initPlaces();
     // Consentement RGPD au premier lancement (Android), puis bannière de l'accueil.
     void this.ads.prepare().then(() => {
       if (this.state === 'home') this.ads.showBanner();
@@ -252,7 +311,72 @@ export class App {
   }
 
   private mapName(id: string): string {
-    return id === 'villagexpo' ? 'Villagexpo' : t('map.fixed.name');
+    if (id === 'villagexpo') return 'Villagexpo';
+    if (id === 'fixed-demo') return t('map.fixed.name');
+    return this.placeInfos.find((i) => i.mapId === id)?.name ?? (this.map.id === id ? this.map.name : id);
+  }
+
+  /** Carte par identifiant : fournie avec le jeu, ou enregistrée dans le cache des lieux. */
+  private async mapById(id: string): Promise<GameMap | null> {
+    if (BUILT_IN.has(id)) return this.loadMap(id);
+    return (await this.mapCache?.byMapId(id))?.map ?? null;
+  }
+
+  /** Change la carte du jeu (nouvelle partie prête, vue recadrée). */
+  private applyMap(map: GameMap): void {
+    this.map = map;
+    this.progress.settings.mapId = map.id;
+    this.persist();
+    this.game = this.createGame();
+    this.renderer.resetView();
+    this.renderer.setMap(map);
+  }
+
+  /** Ouvre le cache des cartes, puis la dernière carte choisie si c'est un lieu enregistré. */
+  private async initPlaces(): Promise<void> {
+    this.mapCache = await openMapCache(this.config.places.cacheMaxMaps);
+    this.placeInfos = await this.mapCache.list();
+    const wanted = this.progress.settings.mapId;
+    if (!BUILT_IN.has(wanted) && this.map.id !== wanted) {
+      const place = await this.mapCache.byMapId(wanted);
+      if (place && this.state === 'home') this.applyMap(place.map);
+      else if (!place) {
+        this.progress.settings.mapId = this.map.id;
+        this.persist();
+      }
+    }
+    if (this.home.visible) this.showHome();
+    else if (this.placeScreen.visible) this.refreshPlaces();
+  }
+
+  /** Clés des cartes à ne pas oublier (carte en cours, partie sauvegardée). */
+  private keptPlaceKeys(): string[] {
+    const ids = [this.map.id, loadSavedGame()?.snapshot.mapId];
+    return this.placeInfos.filter((i) => ids.includes(i.mapId)).map((i) => i.key);
+  }
+
+  /** Cartes proposées : lieux enregistrés (le plus récent d'abord), puis cartes du jeu. */
+  private mapChoices(): (MapChoice & { recency: number })[] {
+    const record = (id: string) => this.progress.records[id] ?? null;
+    const places = this.placeInfos.map((info) => ({
+      id: info.mapId,
+      name: info.name,
+      detail: info.imaginary
+        ? t('map.imaginaryDetail')
+        : info.detail
+          ? t('map.placeDetail', { detail: info.detail, radius: info.requestedRadius })
+          : t('place.radiusOption', { radius: info.requestedRadius }),
+      record: record(info.mapId),
+      recency: Math.max(info.lastPlayed, info.createdAt),
+    }));
+    const builtIns = MAP_IDS.map((id, i) => ({
+      id,
+      name: this.mapName(id),
+      detail: t(`map.${id}.detail`),
+      record: record(id),
+      recency: (Date.parse(record(id)?.lastPlayed ?? '') || 0) - i,
+    }));
+    return [...places, ...builtIns];
   }
 
   // --- Boucle ----------------------------------------------------------------
@@ -317,7 +441,8 @@ export class App {
   // --- Accueil et menus --------------------------------------------------------
 
   private hideOverlays(): void {
-    for (const screen of [this.home, this.upgrades, this.settings, this.help, this.pauseScreen, this.endScreen]) {
+    const screens = [this.home, this.upgrades, this.settings, this.help, this.placeScreen, this.loading, this.pauseScreen, this.endScreen];
+    for (const screen of screens) {
       screen.hide();
     }
   }
@@ -330,17 +455,17 @@ export class App {
     this.toast.hide();
     this.hideOverlays();
     const saved = loadSavedGame();
-    const savedMap = saved ? MAP_IDS.find((id) => id === saved.snapshot.mapId) : undefined;
+    const savedId = saved?.snapshot.mapId ?? '';
+    const savedKnown = BUILT_IN.has(savedId) || this.placeInfos.some((i) => i.mapId === savedId);
+    // Cartes récentes : la carte choisie, puis les plus récemment utilisées.
+    const choices = this.mapChoices();
+    const selected = choices.filter((c) => c.id === this.map.id);
+    const others = choices.filter((c) => c.id !== this.map.id).sort((a, b) => b.recency - a.recency);
     this.home.update({
-      maps: MAP_IDS.map((id) => ({
-        id,
-        name: this.mapName(id),
-        detail: t(`map.${id}.detail`),
-        record: this.progress.records[id] ?? null,
-      })),
-      selectedMapId: this.progress.settings.mapId,
+      maps: [...selected, ...others].slice(0, HOME_MAPS),
+      selectedMapId: this.map.id,
       gems: this.progress.gems,
-      saved: saved && savedMap ? { mapName: this.mapName(savedMap), wave: saved.snapshot.wavesLaunched } : null,
+      saved: saved && savedKnown ? { mapName: this.mapName(savedId), wave: saved.snapshot.wavesLaunched } : null,
       debugMoney: this.startMoney ?? null,
       fallback: this.mapFallback,
     });
@@ -354,14 +479,16 @@ export class App {
     screen.show();
   }
 
-  private selectMap(id: string): void {
-    if (id === this.progress.settings.mapId) return;
-    this.progress.settings.mapId = id;
-    this.persist();
-    this.map = this.loadMap(id);
-    this.game = this.createGame();
-    this.renderer.resetView();
-    this.renderer.setMap(this.map);
+  private async selectMap(id: string): Promise<void> {
+    if (id !== this.map.id) {
+      const map = await this.mapById(id);
+      if (!map) {
+        this.toast.show(t('toast.mapMissing'));
+        this.placeInfos = (await this.mapCache?.list()) ?? [];
+        return this.placeScreen.visible ? this.refreshPlaces() : this.showHome();
+      }
+      this.applyMap(map);
+    }
     this.showHome();
   }
 
@@ -412,6 +539,208 @@ export class App {
     this.game = this.createGame();
   }
 
+  // --- Lieux : adresse, position, génération ------------------------------------
+
+  private openPlaces(): void {
+    this.cancelGeneration();
+    this.hideOverlays();
+    this.refreshPlaces();
+    this.placeScreen.show();
+  }
+
+  private refreshPlaces(): void {
+    this.placeScreen.update({
+      radius: this.placeRadius,
+      radii: this.config.places.radii,
+      busy: this.placeBusy,
+      message: this.placeMessage,
+      results: this.placeResults.map((r) => ({ name: r.name, detail: r.detail })),
+      saved: this.mapChoices(),
+      selectedMapId: this.map.id,
+      volatileCache: this.mapCache !== null && !this.mapCache.persistent,
+    });
+  }
+
+  /** Message d'erreur lisible pour le joueur. */
+  private placeError(error: unknown): string {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (error instanceof OsmError) {
+      if (error.code === 'notFound') return t('place.notFound');
+      if (offline) return t('place.offline');
+      if (error.code === 'overpass') return t('loading.errorOverpass');
+      if (error.code === 'network') return t('loading.errorNetwork');
+    }
+    return t('loading.errorOther', { error: error instanceof Error ? error.message : String(error) });
+  }
+
+  private async searchPlace(query: string): Promise<void> {
+    if (this.placeBusy) return;
+    this.placeBusy = 'search';
+    this.placeMessage = null;
+    this.placeResults = [];
+    this.refreshPlaces();
+    try {
+      this.placeResults = await this.osm.search(query, new AbortController().signal);
+    } catch (error) {
+      const notFound = error instanceof OsmError && error.code === 'notFound';
+      this.placeMessage = {
+        text: notFound ? t('place.notFound') : navigator.onLine === false ? t('place.offline') : t('place.network'),
+        error: true,
+      };
+    }
+    this.placeBusy = null;
+    this.refreshPlaces();
+  }
+
+  /** Position GPS, demandée seulement à l'appui sur « Ma position ». */
+  private async locate(): Promise<void> {
+    if (this.placeBusy) return;
+    if (!navigator.geolocation) {
+      this.placeMessage = { text: t('place.gpsUnavailable'), error: true };
+      return this.refreshPlaces();
+    }
+    this.placeBusy = 'locate';
+    this.placeMessage = null;
+    this.refreshPlaces();
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, maximumAge: 60000 }),
+      );
+      this.placeBusy = null;
+      await this.generate({ kind: 'position', center: { lat: position.coords.latitude, lon: position.coords.longitude } });
+    } catch (error) {
+      const denied = typeof error === 'object' && error !== null && (error as GeolocationPositionError).code === 1;
+      this.placeBusy = null;
+      this.placeMessage = { text: denied ? t('place.gpsDenied') : t('place.gpsUnavailable'), error: true };
+      this.refreshPlaces();
+    }
+  }
+
+  private mapBuilder(): MapBuildFn {
+    this.builder ??= createMapBuilder(this.config);
+    return this.builder;
+  }
+
+  private cancelGeneration(): void {
+    if (!this.generation) return;
+    this.generation.abort();
+    this.generation = null;
+    this.hideOverlays();
+    this.refreshPlaces();
+    this.placeScreen.show();
+  }
+
+  /** Carte d'un lieu : depuis le cache si elle y est, sinon téléchargée et construite. */
+  private async generate(request: PlaceRequest): Promise<void> {
+    this.generation?.abort();
+    const controller = new AbortController();
+    const { signal } = controller;
+    this.generation = controller;
+    this.lastRequest = request;
+    const radius = this.placeRadius;
+    const steps = [
+      ...(request.kind === 'position' ? [{ id: 'name', label: t('loading.name') }] : []),
+      { id: 'download', label: t('loading.download') },
+      { id: 'build', label: t('loading.build') },
+    ];
+    this.hideOverlays();
+    const title = request.kind === 'target' ? request.target.name : t('place.myPositionName');
+    this.loading.start(title, steps);
+    try {
+      let target: PlaceTarget;
+      if (request.kind === 'position') {
+        this.loading.setStep('name', 'active');
+        const named = await this.osm.reverse(request.center, signal).catch((error: unknown) => {
+          if (signal.aborted) throw error;
+          return null;
+        });
+        target = named ?? {
+          center: request.center,
+          name: t('place.myPositionName'),
+          detail: `${request.center.lat.toFixed(4)}, ${request.center.lon.toFixed(4)}`,
+          precise: false,
+          query: null,
+        };
+      } else target = request.target;
+
+      const cached = await this.mapCache?.get(placeKey(target.center, radius));
+      if (cached && cached.info.version === PLACE_MAP_VERSION) {
+        this.generation = null;
+        return this.showReady(cached, target, { cached: true, fallback: false });
+      }
+      const outcome = await generatePlaceMap(target, radius, {
+        config: this.config,
+        signal,
+        build: this.mapBuilder(),
+        overpass: (query, s) =>
+          this.osm.overpass(query, s, (attempt) => {
+            if (attempt > 0) this.loading.setStep('download', 'active', t('loading.mirror', { n: attempt }));
+          }),
+        onProgress: (p) => {
+          if (p.step === 'download') {
+            this.loading.setStep('download', 'active', p.enlarged ? t('loading.enlarge', { radius: p.radius }) : t('loading.download'));
+          } else if (p.step === 'build') this.loading.setStep('build', 'active');
+          else this.loading.setStep('fallback', 'active', t('loading.fallback'));
+        },
+      });
+      if (signal.aborted) return;
+      this.generation = null;
+      if (this.mapCache) {
+        await this.mapCache.save(outcome.place, this.keptPlaceKeys());
+        this.placeInfos = await this.mapCache.list();
+      }
+      this.showReady(outcome.place, target, { cached: false, fallback: outcome.fallbackReason !== null });
+    } catch (error) {
+      if (signal.aborted) return;
+      this.generation = null;
+      console.warn('Carte non créée', error);
+      this.loading.showError(this.placeError(error), !(error instanceof OsmError && error.code === 'notFound'));
+    }
+  }
+
+  /** Aperçu du tracé et « Jouer ici ». */
+  private showReady(place: PlaceMap, target: PlaceTarget | null, how: { cached: boolean; fallback: boolean }): void {
+    this.readyPlace = place;
+    const info = place.info;
+    const notes: string[] = [];
+    if (how.fallback) notes.push(t('loading.fallbackNote'));
+    if (how.cached) notes.push(t('loading.cached'));
+    if (!info.imaginary && info.radius > info.requestedRadius) notes.push(t('loading.enlarged', { radius: info.radius }));
+    if (!info.imaginary && target?.precise) notes.push(t(info.baseAtAddress ? 'loading.baseAtAddress' : 'loading.noBuildingAtAddress'));
+    this.hideOverlays();
+    this.loading.showResult({
+      map: place.map,
+      title: info.name,
+      stats: t('loading.stats', {
+        entries: info.entries,
+        routes: info.routes,
+        length: info.averageRouteLength,
+        slots: info.slots,
+      }),
+      notes,
+      osm: !info.imaginary,
+    });
+  }
+
+  private playReadyPlace(): void {
+    const place = this.readyPlace;
+    if (!place) return;
+    this.readyPlace = null;
+    this.applyMap(place.map);
+    this.startNewGame();
+  }
+
+  /** Quartier imaginaire, sans réseau (hors connexion, ou pour le plaisir). */
+  private async imaginary(): Promise<void> {
+    const seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+    const place = imaginaryMap(seed, this.placeRadius, t('place.imaginaryName', { n: seed % 1000 }), this.config, Date.now());
+    if (this.mapCache) {
+      await this.mapCache.save(place, this.keptPlaceKeys());
+      this.placeInfos = await this.mapCache.list();
+    }
+    this.showReady(place, null, { cached: false, fallback: false });
+  }
+
   // --- Parties -----------------------------------------------------------------
 
   private beginPlaying(game: Game): void {
@@ -427,6 +756,13 @@ export class App {
     this.hideOverlays();
     this.ads.hideBanner();
     this.state = 'playing';
+    const info = this.placeInfos.find((i) => i.mapId === game.map.id);
+    if (info && this.mapCache) {
+      const cache = this.mapCache;
+      void cache.touch(info.key, Date.now()).then(async () => {
+        this.placeInfos = await cache.list();
+      });
+    }
   }
 
   private startNewGame(): void {
@@ -436,15 +772,14 @@ export class App {
     this.beginPlaying(this.createGame());
   }
 
-  private resumeGame(): void {
+  private async resumeGame(): Promise<void> {
     const saved = loadSavedGame();
     if (!saved) return this.startNewGame();
     try {
       if (saved.snapshot.mapId !== this.map.id) {
-        this.progress.settings.mapId = saved.snapshot.mapId;
-        this.map = this.loadMap(saved.snapshot.mapId);
-        this.renderer.resetView();
-        this.renderer.setMap(this.map);
+        const map = await this.mapById(saved.snapshot.mapId);
+        if (!map) throw new Error('carte absente');
+        this.applyMap(map);
       }
       const bonuses = bonusesFrom(this.progress.upgrades, this.config.progression);
       this.beginPlaying(Game.restore(this.map, this.config, saved.snapshot, bonuses));
@@ -705,7 +1040,12 @@ export class App {
         void this.leaveEndScreen();
         return 'handled';
       case 'home':
-        if (this.upgrades.visible || this.settings.visible || this.help.visible) {
+        if (this.loading.visible) {
+          if (this.generation) this.cancelGeneration();
+          else this.openPlaces();
+          return 'handled';
+        }
+        if (this.upgrades.visible || this.settings.visible || this.help.visible || this.placeScreen.visible) {
           this.showHome();
           return 'handled';
         }

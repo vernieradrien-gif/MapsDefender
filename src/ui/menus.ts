@@ -30,6 +30,8 @@ export interface HomeHandlers {
   onPlay(): void;
   onResume(): void;
   onSelectMap(id: string): void;
+  /** Écran de choix d'un autre lieu (adresse, position). */
+  onOtherPlace(): void;
   onUpgrades(): void;
   onSettings(): void;
   onHelp(): void;
@@ -38,11 +40,35 @@ export interface HomeHandlers {
 const gemsBadge = (gems: number) =>
   `<span class="gems">${icons.gem}<strong>${gems}</strong><span class="sr-only">${escapeHtml(t('home.gems'))}</span></span>`;
 
-function button(label: string, className: string, onClick: () => void, html = ''): HTMLButtonElement {
+export function button(label: string, className: string, onClick: () => void, html = ''): HTMLButtonElement {
   const b = el('button', `button ${className}`, `${html}<span>${escapeHtml(label)}</span>`);
   b.type = 'button';
   b.addEventListener('click', onClick);
   return b;
+}
+
+/** Liste de cartes à choisir (accueil, cartes enregistrées). */
+export function mapList(maps: readonly MapChoice[], selectedId: string, onSelect: (id: string) => void): HTMLElement {
+  const list = el('div', 'home-maps');
+  list.setAttribute('role', 'radiogroup');
+  list.setAttribute('aria-label', t('home.chooseMap'));
+  for (const map of maps) {
+    const selected = map.id === selectedId;
+    const record = map.record
+      ? t('home.record', { wave: map.record.bestWave, score: map.record.bestScore })
+      : t('home.noRecord');
+    const card = el(
+      'button',
+      `map-card${selected ? ' selected' : ''}`,
+      `<strong>${escapeHtml(map.name)}</strong>${map.detail ? `<span>${escapeHtml(map.detail)}</span>` : ''}<small>${escapeHtml(record)}</small>`,
+    );
+    card.type = 'button';
+    card.setAttribute('role', 'radio');
+    card.setAttribute('aria-checked', String(selected));
+    card.addEventListener('click', () => onSelect(map.id));
+    list.append(card);
+  }
+  return list;
 }
 
 export class HomeScreen extends Overlay {
@@ -69,26 +95,10 @@ export class HomeScreen extends Overlay {
     );
     if (info.fallback) this.content.append(el('p', 'fallback-note', escapeHtml(t('start.fallback'))));
 
-    const maps = el('div', 'home-maps');
-    maps.setAttribute('role', 'radiogroup');
-    maps.setAttribute('aria-label', t('home.chooseMap'));
-    for (const map of info.maps) {
-      const selected = map.id === info.selectedMapId;
-      const record = map.record
-        ? t('home.record', { wave: map.record.bestWave, score: map.record.bestScore })
-        : t('home.noRecord');
-      const card = el(
-        'button',
-        `map-card${selected ? ' selected' : ''}`,
-        `<strong>${escapeHtml(map.name)}</strong><span>${escapeHtml(map.detail)}</span><small>${escapeHtml(record)}</small>`,
-      );
-      card.type = 'button';
-      card.setAttribute('role', 'radio');
-      card.setAttribute('aria-checked', String(selected));
-      card.addEventListener('click', () => h.onSelectMap(map.id));
-      maps.append(card);
-    }
-    this.content.append(maps);
+    this.content.append(
+      mapList(info.maps, info.selectedMapId, h.onSelectMap),
+      button(t('home.otherPlace'), 'button-secondary button-place', h.onOtherPlace, icons.pin),
+    );
 
     if (info.debugMoney !== null) {
       this.content.append(el('p', 'debug-note', escapeHtml(t('start.debug', { money: info.debugMoney }))));

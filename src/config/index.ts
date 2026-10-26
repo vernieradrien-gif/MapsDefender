@@ -208,6 +208,8 @@ export interface OsmRulesConfig {
   gableMinRectangularity: number;
   /** Choix de la base : score = emprise × hauteur / (1 + (distance au centre / baseProximity)²). */
   baseProximity: number;
+  /** Adresse précise : la base est le bâtiment à moins de cette distance du point géocodé (m). */
+  addressMaxDistance: number;
   baseMaxStreetDistance: number;
   paletteCount: number;
   trees: TreeRules;
@@ -223,6 +225,30 @@ export interface PermanentUpgradeConfig {
   effect: number;
   /** Niveau d'une autre amélioration à atteindre d'abord (arbre), ou null. */
   requires: { id: string; level: number } | null;
+}
+
+/** Cartes générées depuis une adresse ou une position (jalon 4). */
+export interface PlacesConfig {
+  /** Rayons proposés au joueur (m). La zone de jeu suit le rayon : osm.zoneWidth × rayon / defaultRadius. */
+  radii: number[];
+  defaultRadius: number;
+  /** Rayon maximal atteint en agrandissant la zone (zone rurale, itinéraires trop courts). */
+  maxRadius: number;
+  radiusStep: number;
+  /** Longueur moyenne minimale des itinéraires (m) ; en dessous, la zone est agrandie. */
+  minAverageRouteLength: number;
+  /** Résultats proposés après une recherche d'adresse. */
+  geocodeResults: number;
+  /** Écart minimal entre deux requêtes Nominatim (s). */
+  nominatimInterval: number;
+  /** Temps de calcul accordé au serveur Overpass (s). */
+  overpassTimeout: number;
+  /** Attente maximale d'une réponse du réseau (s). */
+  requestTimeout: number;
+  /** Cartes gardées en cache sur l'appareil (les moins récemment jouées partent d'abord). */
+  cacheMaxMaps: number;
+  /** Graines essayées pour la carte imaginaire de secours. */
+  fallbackAttempts: number;
 }
 
 export interface ProgressionConfig {
@@ -259,6 +285,7 @@ export interface GameConfig {
   heightBonus: HeightBonusConfig;
   mapRules: MapRulesConfig;
   osm: OsmRulesConfig;
+  places: PlacesConfig;
   progression: ProgressionConfig;
   ads: AdsConfig;
   debug: { startMoney: number };
@@ -373,6 +400,21 @@ export function validateConfig(config: GameConfig): string[] {
   positive(o.levelHeight, 'osm.levelHeight');
   for (const [kind, h] of Object.entries(o.defaultHeights)) positive(h, `osm.defaultHeights.${kind}`);
   ratio(o.gableMinRectangularity, 'osm.gableMinRectangularity');
+
+  positive(o.addressMaxDistance, 'osm.addressMaxDistance');
+
+  const pl = config.places;
+  pl.radii.forEach((r, i) => positive(r, `places.radii[${i}]`));
+  if (!pl.radii.includes(pl.defaultRadius)) errors.push('places.defaultRadius doit être un des rayons proposés');
+  if (!(pl.maxRadius >= Math.max(...pl.radii))) errors.push('places.maxRadius doit être >= au plus grand rayon');
+  positive(pl.radiusStep, 'places.radiusStep');
+  positive(pl.minAverageRouteLength, 'places.minAverageRouteLength');
+  positive(pl.geocodeResults, 'places.geocodeResults');
+  nonNegative(pl.nominatimInterval, 'places.nominatimInterval');
+  positive(pl.overpassTimeout, 'places.overpassTimeout');
+  if (!(pl.requestTimeout > pl.overpassTimeout)) errors.push('places.requestTimeout doit dépasser overpassTimeout');
+  positive(pl.cacheMaxMaps, 'places.cacheMaxMaps');
+  positive(pl.fallbackAttempts, 'places.fallbackAttempts');
 
   const p = config.progression;
   positive(p.gemFactor, 'progression.gemFactor');

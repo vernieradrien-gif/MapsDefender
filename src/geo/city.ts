@@ -8,6 +8,7 @@ import {
   pointInPolygon,
   polylineToPolygonDistance,
 } from './geometry';
+import { SpatialGrid } from './spatialGrid';
 
 // Génère le décor d'un quartier (bâtiments alignés le long des rues, arbres)
 // à partir d'un réseau de rues et de zones. Utilisé pour la carte fixe ;
@@ -120,6 +121,9 @@ export const cityPlanting = (style: CityStyle): TreePlanting => ({
   paletteCount: style.trees.paletteCount,
 });
 
+/** Taille des cellules des index spatiaux (m). */
+const CELL = 16;
+
 /** Arbres dans les jardins, les parcs et les bois, à l'écart des rues, bâtiments, eau et emplacements. */
 export function generateTrees(
   streets: readonly Street[],
@@ -134,15 +138,29 @@ export function generateTrees(
   const green = areas.filter((a) => a.kind === 'park' || a.kind === 'wood');
   const blocked = areas.filter((a) => a.kind === 'water' || a.kind === 'plaza');
 
+  // Index spatiaux : mêmes tests qu'en parcourant tout, seulement sur les voisins.
+  const streetGrid = new SpatialGrid<Street>(CELL);
+  let halfWidth = 0;
+  for (const street of streets) {
+    halfWidth = Math.max(halfWidth, street.width / 2);
+    for (let i = 1; i < street.points.length; i++) streetGrid.insertPoints(street, [street.points[i - 1]!, street.points[i]!]);
+  }
+  const buildingGrid = new SpatialGrid<Building>(CELL);
+  for (const b of buildings) buildingGrid.insertPoints(b, b.footprint);
+  const treeGrid = new SpatialGrid<Tree>(CELL);
+
   const tryPlace = (p: Vec2, spacing: number) => {
     const radius = pick(rng, cfg.radius);
-    if (streets.some((s) => distanceToPolyline(p, s.points) < s.width / 2 + cfg.sidewalk + radius * 0.6)) return;
-    if (buildings.some((b) => distanceToPolygon(p, b.footprint) < radius * 0.7)) return;
+    const streetReach = halfWidth + cfg.sidewalk + radius * 0.6;
+    if (streetGrid.some(p, streetReach, (s) => distanceToPolyline(p, s.points) < s.width / 2 + cfg.sidewalk + radius * 0.6)) return;
+    if (buildingGrid.some(p, radius * 0.7, (b) => distanceToPolygon(p, b.footprint) < radius * 0.7)) return;
     // Les plans d'eau gardent une rive dégagée (allée du parc).
     if (blocked.some((a) => distanceToPolygon(p, a.polygon) < radius + (a.kind === 'water' ? 6 : 0))) return;
     if (slots.some((s) => Math.hypot(s.x - p.x, s.y - p.y) < 7)) return;
-    if (trees.some((t) => Math.hypot(t.x - p.x, t.y - p.y) < spacing)) return;
-    trees.push({ x: p.x, y: p.y, radius, palette: Math.floor(rng.next() * cfg.paletteCount) });
+    if (treeGrid.some(p, spacing, (t) => Math.hypot(t.x - p.x, t.y - p.y) < spacing)) return;
+    const tree = { x: p.x, y: p.y, radius, palette: Math.floor(rng.next() * cfg.paletteCount) };
+    trees.push(tree);
+    treeGrid.insert(tree, tree.x, tree.y, tree.x, tree.y);
   };
 
   for (const area of green) {

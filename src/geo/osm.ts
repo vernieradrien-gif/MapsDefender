@@ -33,14 +33,20 @@ export interface GeoBox {
   east: number;
 }
 
-/** Requête Overpass QL : rues, bâtiments, espaces verts et eau d'une emprise. */
-export function overpassQuery(box: GeoBox, timeoutSeconds = 25): string {
-  const b = [box.south, box.west, box.north, box.east].map((v) => v.toFixed(6)).join(',');
+const bbox = (box: GeoBox) => [box.south, box.west, box.north, box.east].map((v) => v.toFixed(6)).join(',');
+
+/**
+ * Requête Overpass QL : rues d'une emprise, et bâtiments, espaces verts et eau
+ * d'une emprise de décor (par défaut la même, souvent plus petite : réponse plus légère).
+ */
+export function overpassQuery(box: GeoBox, options: { timeout?: number; decorBox?: GeoBox } = {}): string {
+  const r = bbox(box);
+  const b = bbox(options.decorBox ?? box);
   const types = STREET_TYPES.join('|');
   return [
-    `[out:json][timeout:${timeoutSeconds}];`,
+    `[out:json][timeout:${options.timeout ?? 25}];`,
     '(',
-    `way["highway"~"^(${types})$"](${b});`,
+    `way["highway"~"^(${types})$"](${r});`,
     `way["building"](${b});`,
     `relation["building"](${b});`,
     `way["leisure"~"^(park|garden)$"](${b});`,
@@ -50,7 +56,7 @@ export function overpassQuery(box: GeoBox, timeoutSeconds = 25): string {
     `relation["landuse"~"^(grass|forest)$"](${b});`,
     `relation["natural"~"^(wood|water)$"](${b});`,
     ');',
-    'out geom;',
+    'out geom qt;',
   ].join('');
 }
 

@@ -44,6 +44,23 @@ export const icons = {
   maxed: svg(
     '<circle cx="12" cy="12" r="10" fill="#ffc93c"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>',
   ),
+  pin: svg(
+    '<path d="M12 22s7-6.4 7-12a7 7 0 1 0-14 0c0 5.6 7 12 7 12z" fill="currentColor"/><circle cx="12" cy="10" r="2.8" fill="#fff"/>',
+  ),
+  locate: svg(
+    '<circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>' +
+      '<path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
+  ),
+  search: svg(
+    '<circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
+  ),
+  dice: svg(
+    '<rect x="3.5" y="3.5" width="17" height="17" rx="4" fill="none" stroke="currentColor" stroke-width="2.2"/>' +
+      '<circle cx="8.5" cy="8.5" r="1.6" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/>',
+  ),
+  check: svg(
+    '<circle cx="12" cy="12" r="10" fill="#3fbf6b"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  ),
   sell: svg(
     '<circle cx="12" cy="12" r="10" fill="#f1f2f7" stroke="#d7dae4" stroke-width="1.2"/>' +
       '<circle cx="12" cy="12" r="6" fill="#ffdb6e" stroke="#e8a920" stroke-width="1.4"/><path d="M12 9v6M10 12h4" stroke="#e8a920" stroke-width="1.5" stroke-linecap="round"/>',
