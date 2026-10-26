@@ -1,5 +1,6 @@
 import type { Game, Projectile } from '../game/game';
 import type { Building, GameMap, TowerSlot, Vec2 } from '../game/types';
+import { distanceToPolyline } from '../game/path';
 import { interiorPoint } from '../geo/geometry';
 import { Camera, type ViewRect } from './camera';
 import { buildingTopHeight, drawCity, entryScreen, liftPx, padTopPx } from './cityLayer';
@@ -40,6 +41,8 @@ export class Renderer {
   private view: ViewRect = { x: 0, y: 0, width: 1, height: 1 };
   /** Hauteur à l'écran (px) du haut de chaque support d'emplacement. */
   private slotLift = new Map<number, number>();
+  /** Emplacements dont le repère reste visible sans zoom (sélection espacée près des itinéraires, et socles). */
+  private nearSlots = new Set<number>();
   /** Haut du bâtiment à protéger (monde) et sa hauteur (m), pour la jauge de PV. */
   private baseTop: { at: Vec2; height: number } = { at: { x: 0, y: 0 }, height: 0 };
   /** Caméra avec laquelle le calque du décor a été dessiné (pour l'agrandir pendant un geste). */
@@ -69,6 +72,14 @@ export class Renderer {
 
   setMap(map: GameMap): void {
     this.map = map;
+    // Les emplacements sont numérotés du plus proche d'un itinéraire au plus loin.
+    const shown: TowerSlot[] = [];
+    for (const s of map.slots) {
+      const near = s.kind === 'pad' || map.paths.some((p) => distanceToPolyline(s, p.points) <= theme.slotMarker.nearRoute);
+      const spaced = shown.every((o) => Math.hypot(o.x - s.x, o.y - s.y) >= theme.slotMarker.spacing);
+      if (near && (spaced || s.kind === 'pad')) shown.push(s);
+    }
+    this.nearSlots = new Set(shown.map((s) => s.id));
     const building = map.buildings.find((b) => b.id === map.baseBuildingId);
     this.baseTop = building
       ? { at: interiorPoint(building.footprint), height: buildingTopHeight(building) }
@@ -162,13 +173,16 @@ export class Renderer {
     this.layerStale = false;
   }
 
-  /** Bâtiment dessiné sous ce point de l'écran (px CSS), ou null. */
-  buildingAt(x: number, y: number): Building | null {
+  /**
+   * Bâtiment dessiné sous ce point de l'écran (px CSS), ou null. `tolerant` :
+   * à défaut, le plus proche à portée de doigt (petites maisons sans zoom).
+   */
+  buildingAt(x: number, y: number, tolerant = true): Building | null {
     const map = this.map;
     if (!map) return null;
     const cam = this.camera;
     const project = (p: Vec2, h: number) => ({ x: cam.sx(p.x), y: cam.sy(p.y) - liftPx(cam, h) });
-    return buildingAtScreen(map.buildings, project, buildingTopHeight, { x, y }, PICK_TOLERANCE_PX);
+    return buildingAtScreen(map.buildings, project, buildingTopHeight, { x, y }, tolerant ? PICK_TOLERANCE_PX : 0);
   }
 
   /** Point de l'écran où se trouve le haut du support d'un emplacement. */
@@ -194,10 +208,13 @@ export class Renderer {
     effects.drawGround(ctx, cam);
     this.drawSelectedRange(game, state);
 
+    const showAll = cam.zoom >= theme.slotMarker.allFromZoom;
     for (const slot of game.map.slots) {
-      if (game.towerAt(slot.id)) continue;
+      const selected = slot.id === state.selectedSlotId;
+      if (game.towerAt(slot.id) || (!selected && !showAll && !this.nearSlots.has(slot.id))) continue;
       const p = this.slotScreen(slot);
-      drawSlotMarker(ctx, p.x, p.y, u, time, slot.id === state.selectedSlotId);
+      if (p.x < -20 || p.y < -20 || p.x > this.width + 20 || p.y > this.height + 20) continue;
+      drawSlotMarker(ctx, p.x, p.y, u, time, selected);
     }
 
     const slotsById = new Map(game.map.slots.map((s) => [s.id, s]));

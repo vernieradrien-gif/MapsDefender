@@ -14,13 +14,14 @@ describe('vagues', () => {
   const config = testConfig();
   const waves = config.waves;
 
-  it('PV = base × 1,12^(vague − 1)', () => {
+  it('PV = base × croissance^(vague − 1)', () => {
+    const g = waves.hpGrowth;
     expect(hpMultiplier(1, waves)).toBe(1);
-    expect(hpMultiplier(2, waves)).toBeCloseTo(1.12, 10);
-    expect(hpMultiplier(30, waves)).toBeCloseTo(Math.pow(1.12, 29), 10);
+    expect(hpMultiplier(2, waves)).toBeCloseTo(g, 10);
+    expect(hpMultiplier(30, waves)).toBeCloseTo(Math.pow(g, 29), 10);
     expect(scaledHp(20, hpMultiplier(1, waves))).toBe(20);
-    expect(scaledHp(20, hpMultiplier(2, waves))).toBe(22);
-    expect(scaledHp(60, hpMultiplier(10, waves))).toBe(Math.round(60 * Math.pow(1.12, 9)));
+    expect(scaledHp(20, hpMultiplier(2, waves))).toBe(Math.round(20 * g));
+    expect(scaledHp(60, hpMultiplier(10, waves))).toBe(Math.round(60 * Math.pow(g, 9)));
   });
 
   it('les PV ne descendent jamais sous 1', () => {

@@ -1,4 +1,5 @@
 import type { GameConfig, OsmRulesConfig } from '../config';
+import { validateMap } from '../game/mapValidation';
 import { distance } from '../game/path';
 import { Rng } from '../game/rng';
 import type { Area, Bounds, Building, EntryMarker, GameMap, MapPath, Street, Vec2 } from '../game/types';
@@ -309,3 +310,45 @@ export function roundMap(map: GameMap, decimals = 1): GameMap {
 }
 
 const dedupe = (pts: Vec2[]) => pts.filter((p, i) => i === 0 || p.x !== pts[i - 1]!.x || p.y !== pts[i - 1]!.y);
+
+export interface MovedBase {
+  map: GameMap;
+  report: MapReport;
+}
+
+/**
+ * Même carte, base déplacée sur un autre bâtiment (choix du joueur) :
+ * itinéraires, emplacements et arbres refaits à partir des rues, bâtiments et
+ * surfaces de la carte, sans réseau. Les rues connues s'arrêtant au bord du
+ * décor, les entrées sont à ce bord. Renvoie null si ce bâtiment ne peut pas
+ * être la base (abri, trop loin d'une rue) ou si la carte ne serait plus jouable.
+ */
+export function moveBase(map: GameMap, buildingId: number, config: GameConfig): MovedBase | null {
+  const building = map.buildings.find((b) => b.id === buildingId);
+  if (!building || building.kind === 'annex') return null;
+  const nearStreet = map.streets.some(
+    (s) => polylineToPolygonDistance(s.points, building.footprint) <= config.osm.baseMaxStreetDistance,
+  );
+  if (!nearStreet) return null;
+  try {
+    const { map: raw, report } = assembleMap(
+      {
+        id: map.id,
+        name: map.name,
+        seed: map.seed,
+        zone: map.bounds,
+        streets: map.streets,
+        buildings: map.buildings,
+        areas: map.areas,
+        baseBuildingId: buildingId,
+        trees: map.trees.length > 0,
+        ...(map.attribution ? { attribution: map.attribution } : {}),
+      },
+      config,
+    );
+    const moved = roundMap(raw);
+    return validateMap(moved, config.mapRules).length === 0 ? { map: moved, report } : null;
+  } catch {
+    return null;
+  }
+}

@@ -7,30 +7,27 @@ import type { GameEvent } from './game/events';
 import { Game, type Tower } from './game/game';
 import { FixedStepLoop } from './game/loop';
 import { bonusesFrom, buyUpgrade, canBuy, gemsForScore, levelOf, nextCost } from './game/progression';
-import type { GameMap } from './game/types';
+import type { GameMap, TowerSlot } from './game/types';
 import { createHttp } from './geo/http';
-import { createMapBuilder } from './geo/mapBuilderClient';
+import type { MovedBase } from './geo/mapBuilder';
+import { createMapWorker, type MapWorker } from './geo/mapBuilderClient';
 import { loadGameMap, MAP_IDS } from './geo/maps';
-import { OsmClient, OsmError } from './geo/osmClient';
-import { placeQuery, type OsmPlace } from './geo/osmMap';
+import { OsmClient, OsmError, type OverpassProgress } from './geo/osmClient';
 import {
   generatePlaceMap,
   imaginaryMap,
   PLACE_MAP_VERSION,
-  rebuildWithBase,
-  type BuildRequest,
-  type MapBuildFn,
+  withMovedBase,
   type PlaceMap,
   type PlaceMapInfo,
 } from './geo/placeMap';
-import { placeKey, placeSeedKey, type PlaceTarget } from './geo/places';
-import { interiorPoint } from './geo/geometry';
-import type { OverpassProgress } from './geo/osmClient';
+import { placeKey, type PlaceTarget } from './geo/places';
 import type { LatLon } from './geo/projection';
 import { t } from './i18n';
 import type { ViewRect } from './render/camera';
 import { Effects } from './render/effects';
 import { Renderer } from './render/renderer';
+import { readJSON, writeJSON } from './storage';
 import { openMapCache, type MapCache } from './storage/mapCache';
 import {
   clearSavedGame,
@@ -59,6 +56,9 @@ import { TowerMenu, type TowerMenuInfo } from './ui/towerMenu';
 /** `ad` : une publicité est affichée, le jeu est figé. */
 /** `pickBase` : le joueur touche sur la carte le bâtiment qui sera la base. */
 type AppState = 'home' | 'playing' | 'paused' | 'ended' | 'ad' | 'pickBase';
+
+/** D'où le mode « Choisir la base » a été ouvert. */
+type PickFrom = 'preview' | 'game' | 'pause';
 
 /** Comment la carte prête a été obtenue (notes de l'aperçu). */
 interface ReadyHow {
@@ -99,6 +99,8 @@ const SHARE_URL = 'https://vernieradrien-gif.github.io/MapsDefender/';
 const BUILT_IN = new Set<string>(MAP_IDS);
 /** Nombre de cartes récentes sur l'accueil. */
 const HOME_MAPS = 3;
+/** Clé de stockage : l'astuce « pincer pour zoomer » a déjà été montrée. */
+const ZOOM_HINT_KEY = 'zoomHintShown';
 /** Délai (ms) pendant lequel un toucher n'est pas pris en compte en entrant dans « Choisir la base ». */
 const PICK_GRACE_MS = 400;
 
@@ -145,7 +147,7 @@ export class App {
   private mapCache: MapCache | null = null;
   private placeInfos: PlaceMapInfo[] = [];
   private readonly osm: OsmClient;
-  private builder: MapBuildFn | null = null;
+  private worker: MapWorker | null = null;
   private generation: AbortController | null = null;
   private placeRadius: number;
   private placeResults: PlaceTarget[] = [];
@@ -155,10 +157,11 @@ export class App {
   private readyPlace: PlaceMap | null = null;
   /** Lieu, données et notes de la carte prête (pour la reconstruire avec une autre base). */
   private readyTarget: PlaceTarget | null = null;
-  private readySource: BuildRequest | null = null;
   private readyHow: ReadyHow = { cached: false, fallback: false };
-  /** Début du mode « Choisir la base » (le toucher qui l'ouvre ne choisit rien). */
+  /** Mode « Choisir la base » : d'où il a été ouvert, quand (le toucher qui l'ouvre ne choisit rien), calcul en cours. */
+  private pickFrom: PickFrom = 'preview';
   private pickStartedAt = 0;
+  private pickBusy = false;
 
   private selectedTowerId: number | null = null;
   private selectionExpiresAt = 0;
@@ -193,6 +196,9 @@ export class App {
       onZoomIn: () => this.zoomStep(ZOOM_STEP),
       onZoomOut: () => this.zoomStep(1 / ZOOM_STEP),
       onBoost: () => void this.boost(),
+      onMoveBase: () => {
+        if (this.state === 'playing') this.startPickBase('game');
+      },
     });
     this.radial = new RadialMenu(
       root,
@@ -248,6 +254,7 @@ export class App {
       root,
       () => this.resume(),
       () => this.startNewGame(),
+      () => this.startPickBase('pause'),
       () => {
         this.saveCurrentGame();
         this.showHome();
@@ -276,7 +283,7 @@ export class App {
       onPlay: () => this.playReadyPlace(),
       onBack: () => this.openPlaces(),
       onImaginary: () => void this.imaginary(),
-      onPickBase: () => this.startPickBase(),
+      onPickBase: () => this.startPickBase('preview'),
     });
     this.endScreen = new EndScreen(root, {
       onReplay: () => this.startNewGame(),
@@ -347,10 +354,14 @@ export class App {
     return this.placeInfos.find((i) => i.mapId === id)?.name ?? (this.map.id === id ? this.map.name : id);
   }
 
-  /** Carte par identifiant : fournie avec le jeu, ou enregistrée dans le cache des lieux. */
+  /**
+   * Carte par identifiant : enregistrée dans le cache (lieu, ou carte du jeu
+   * dont le joueur a déplacé la base), sinon fournie avec le jeu.
+   */
   private async mapById(id: string): Promise<GameMap | null> {
-    if (BUILT_IN.has(id)) return this.loadMap(id);
-    return (await this.mapCache?.byMapId(id))?.map ?? null;
+    const cached = (await this.mapCache?.byMapId(id))?.map;
+    if (cached) return cached;
+    return BUILT_IN.has(id) ? this.loadMap(id) : null;
   }
 
   /** Change la carte du jeu (nouvelle partie prête, vue recadrée). */
@@ -368,13 +379,11 @@ export class App {
     this.mapCache = await openMapCache(this.config.places.cacheMaxMaps);
     this.placeInfos = await this.mapCache.list();
     const wanted = this.progress.settings.mapId;
-    if (!BUILT_IN.has(wanted) && this.map.id !== wanted) {
-      const place = await this.mapCache.byMapId(wanted);
-      if (place && this.state === 'home') this.applyMap(place.map);
-      else if (!place) {
-        this.progress.settings.mapId = this.map.id;
-        this.persist();
-      }
+    const place = await this.mapCache.byMapId(wanted);
+    if (place && this.state === 'home') this.applyMap(place.map);
+    else if (!place && !BUILT_IN.has(wanted)) {
+      this.progress.settings.mapId = this.map.id;
+      this.persist();
     }
     if (this.home.visible) this.showHome();
     else if (this.placeScreen.visible) this.refreshPlaces();
@@ -389,7 +398,8 @@ export class App {
   /** Cartes proposées : lieux enregistrés (le plus récent d'abord), puis cartes du jeu. */
   private mapChoices(): (MapChoice & { recency: number })[] {
     const record = (id: string) => this.progress.records[id] ?? null;
-    const places = this.placeInfos.map((info) => ({
+    // Une carte du jeu à la base déplacée garde sa place parmi les cartes du jeu.
+    const places = this.placeInfos.filter((info) => !BUILT_IN.has(info.mapId)).map((info) => ({
       id: info.mapId,
       name: info.name,
       detail: info.imaginary
@@ -651,9 +661,9 @@ export class App {
     }
   }
 
-  private mapBuilder(): MapBuildFn {
-    this.builder ??= createMapBuilder(this.config);
-    return this.builder;
+  private mapWorker(): MapWorker {
+    this.worker ??= createMapWorker(this.config);
+    return this.worker;
   }
 
   private cancelGeneration(): void {
@@ -701,13 +711,12 @@ export class App {
       const cached = await this.mapCache?.get(placeKey(target.center, radius));
       if (cached && cached.info.version === PLACE_MAP_VERSION) {
         this.generation = null;
-        this.readySource = null;
         return this.showReady(cached, target, { cached: true, fallback: false });
       }
       const outcome = await generatePlaceMap(target, radius, {
         config: this.config,
         signal,
-        build: this.mapBuilder(),
+        build: this.mapWorker().build,
         overpass: (query, s) => this.osm.overpass(query, s, (p) => this.showDownload(p)),
         onProgress: (p) => {
           if (p.step === 'download') {
@@ -722,7 +731,6 @@ export class App {
         await this.mapCache.save(outcome.place, this.keptPlaceKeys());
         this.placeInfos = await this.mapCache.list();
       }
-      this.readySource = outcome.source;
       this.showReady(outcome.place, target, { cached: false, fallback: outcome.fallbackReason !== null });
     } catch (error) {
       if (signal.aborted) return;
@@ -772,102 +780,125 @@ export class App {
     }
   }
 
-  // --- Choisir la base sur la carte ----------------------------------------------
+  // --- Choisir ou déplacer la base sur la carte ------------------------------------
 
-  /** Carte prête affichée en plein écran, zoomable : le joueur touche le bâtiment de la base. */
-  private startPickBase(): void {
-    const place = this.readyPlace;
-    if (!place) return;
+  /**
+   * Mode « Choisir la base » : la carte en plein écran, zoomable ; le joueur
+   * touche le bâtiment de la base. Depuis l'aperçu d'un lieu, ou en partie
+   * (avant la première vague, ou depuis la pause : la partie recommence).
+   */
+  private startPickBase(from: PickFrom): void {
+    const map = from === 'preview' ? this.readyPlace?.map : this.map;
+    if (!map) return;
+    this.pickFrom = from;
     this.hideOverlays();
     this.closeMenus();
+    this.selectedTowerId = null;
     this.state = 'pickBase';
     this.pickStartedAt = performance.now();
     this.root.classList.add('picking');
-    // Partie provisoire sur cette carte : le rendu montre ses emplacements, pas ceux d'une autre carte.
-    this.game = new Game(place.map, this.config);
-    this.renderer.resetView();
-    this.renderer.setMap(place.map);
+    if (from === 'preview') {
+      // Partie provisoire sur cette carte : le rendu montre ses emplacements, pas ceux d'une autre carte.
+      this.game = new Game(map, this.config);
+      this.renderer.resetView();
+      this.renderer.setMap(map);
+    }
     this.pickBanner.show();
   }
 
-  /** Quitte le mode sans rien changer : la carte du jeu revient derrière les écrans. */
+  /** Quitte le mode : retour à l'aperçu, à la partie ou à la pause. */
   private leavePickBase(): void {
     this.pickBanner.hide();
     this.root.classList.remove('picking');
-    this.state = 'home';
-    this.game = this.createGame();
-    this.renderer.resetView();
-    this.renderer.setMap(this.map);
+    this.pickBusy = false;
+    if (this.pickFrom === 'preview') {
+      this.state = 'home';
+      this.game = this.createGame();
+      this.renderer.resetView();
+      this.renderer.setMap(this.map);
+    } else {
+      this.state = this.pickFrom === 'pause' ? 'paused' : 'playing';
+    }
   }
 
   private cancelPickBase(): void {
     if (this.state !== 'pickBase') return;
     this.leavePickBase();
-    if (this.readyPlace) this.showReady(this.readyPlace, this.readyTarget, this.readyHow);
+    if (this.pickFrom === 'preview' && this.readyPlace) this.showReady(this.readyPlace, this.readyTarget, this.readyHow);
+    else if (this.pickFrom === 'pause') this.pauseScreen.show();
   }
 
   private pickBaseAt(x: number, y: number): void {
-    if (performance.now() - this.pickStartedAt < PICK_GRACE_MS) return;
+    if (this.pickBusy || performance.now() - this.pickStartedAt < PICK_GRACE_MS) return;
+    const map = this.pickFrom === 'preview' ? this.readyPlace?.map : this.map;
     const building = this.renderer.buildingAt(x, y);
-    if (!building) return this.toast.show(t('pick.noBuilding'), 2200);
+    if (!map || !building) return this.toast.show(t('pick.noBuilding'), 2200);
+    if (building.id === map.baseBuildingId) return this.toast.show(t('pick.already'), 2200);
     if (building.kind === 'annex') return this.toast.show(t('pick.annex'), 2600);
-    void this.rebuildBase(interiorPoint(building.footprint));
+    void this.moveBaseTo(map, building.id);
   }
 
-  /** Reconstruit la carte prête avec la base sur le bâtiment touché (données gardées, sinon retéléchargées). */
-  private async rebuildBase(at: { x: number; y: number }): Promise<void> {
-    const ready = this.readyPlace;
-    const target = this.readyTarget;
-    if (!ready || !target || !ready.info.center) return;
+  /** Refait la carte avec la base sur ce bâtiment (sans réseau), l'enregistre et la montre. */
+  private async moveBaseTo(map: GameMap, buildingId: number): Promise<void> {
+    this.pickBusy = true;
+    this.toast.show(t('pick.building'), 4000);
+    const moved = await this.mapWorker().moveBase(map, buildingId);
+    if (this.state !== 'pickBase') return; // annulé entre-temps
+    this.pickBusy = false;
+    if (!moved) return this.toast.show(t('pick.refused'), 3000);
+    const from = this.pickFrom;
+    this.toast.hide();
     this.leavePickBase();
-    const controller = new AbortController();
-    const { signal } = controller;
-    this.generation = controller;
-    const steps = [
-      ...(this.readySource ? [] : [{ id: 'download', label: t('loading.download') }]),
-      { id: 'build', label: t('loading.rebuild') },
-    ];
-    this.loading.start(ready.info.name, steps);
-    try {
-      let source = this.readySource;
-      if (!source) {
-        this.loading.setStep('download', 'active');
-        const info = ready.info;
-        const place: OsmPlace = {
-          id: info.mapId,
-          name: info.name,
-          center: info.center!,
-          radius: info.radius,
-          seedKey: placeSeedKey(target, info.requestedRadius),
-          precise: target.precise,
-        };
-        const text = await this.osm.overpass(placeQuery(place, this.config), signal, (p) => this.showDownload(p));
-        source = { place, responseText: text };
-        this.readySource = source;
-      }
-      if (signal.aborted) return;
-      this.loading.setStep('build', 'active');
-      const rebuilt = await rebuildWithBase(ready, source, at, this.mapBuilder());
-      if (signal.aborted) return;
-      this.generation = null;
-      if (!rebuilt) {
-        this.startPickBase();
-        this.toast.show(t('pick.refused'), 3000);
-        return;
-      }
-      // La carte change sous le même nom : une partie sauvegardée dessus ne peut plus être reprise.
-      if (loadSavedGame()?.snapshot.mapId === rebuilt.map.id) clearSavedGame();
-      if (this.mapCache) {
-        await this.mapCache.save(rebuilt, this.keptPlaceKeys());
-        this.placeInfos = await this.mapCache.list();
-      }
-      if (this.map.id === rebuilt.map.id) this.applyMap(rebuilt.map);
-      this.showReady(rebuilt, target, { cached: false, fallback: false });
-    } catch (error) {
-      if (signal.aborted) return;
-      this.generation = null;
-      this.loading.showError(this.placeError(error), true);
+    // La carte change sous le même nom : une partie sauvegardée dessus ne peut plus être reprise.
+    if (loadSavedGame()?.snapshot.mapId === moved.map.id) clearSavedGame();
+    const place = await this.saveMovedMap(moved, from === 'preview' ? this.readyPlace : null);
+    if (from === 'preview') {
+      if (this.map.id === moved.map.id) this.applyMap(moved.map);
+      this.showReady(place, this.readyTarget, { cached: false, fallback: false });
+    } else {
+      this.applyMap(moved.map);
+      this.startNewGame();
+      this.toast.show(t('toast.baseMoved'), 2600);
     }
+  }
+
+  /**
+   * Garde la carte à la base déplacée : un lieu remplace son ancienne version ;
+   * pour une carte fournie avec le jeu, c'est une version personnelle (même identifiant).
+   */
+  private async saveMovedMap(moved: MovedBase, ready: PlaceMap | null): Promise<PlaceMap> {
+    const known = ready && ready.map.id === moved.map.id ? ready.info : this.placeInfos.find((i) => i.mapId === moved.map.id);
+    const place: PlaceMap = { info: withMovedBase(known ?? this.builtInInfo(moved.map), moved.report), map: moved.map };
+    if (this.mapCache) {
+      await this.mapCache.save(place, this.keptPlaceKeys());
+      this.placeInfos = await this.mapCache.list();
+    }
+    return place;
+  }
+
+  /** Description d'une carte du jeu (Villagexpo, démo) dont le joueur déplace la base. */
+  private builtInInfo(map: GameMap): PlaceMapInfo {
+    const now = Date.now();
+    const radius = this.config.places.defaultRadius;
+    return {
+      version: PLACE_MAP_VERSION,
+      key: `base:${map.id}`,
+      mapId: map.id,
+      name: this.mapName(map.id),
+      detail: '',
+      center: null,
+      requestedRadius: radius,
+      radius,
+      imaginary: false,
+      createdAt: now,
+      lastPlayed: now,
+      averageRouteLength: 0,
+      routes: 0,
+      entries: 0,
+      slots: 0,
+      baseAtAddress: false,
+      osmDate: null,
+    };
   }
 
   private playReadyPlace(): void {
@@ -904,6 +935,11 @@ export class App {
     this.hideOverlays();
     this.ads.hideBanner();
     this.state = 'playing';
+    // Première partie : rappeler qu'on peut zoomer et déplacer la carte.
+    if (!readJSON<boolean>(ZOOM_HINT_KEY, false)) {
+      writeJSON(ZOOM_HINT_KEY, true);
+      this.toast.show(t('help.zoomHint'), 4500);
+    }
     const info = this.placeInfos.find((i) => i.mapId === game.map.id);
     if (info && this.mapCache) {
       const cache = this.mapCache;
@@ -1079,12 +1115,27 @@ export class App {
     this.towerMenu.close();
   }
 
+  /**
+   * Emplacement touché : une tourelle d'abord (dessinée au-dessus des toits),
+   * puis le bâtiment sous le doigt (chaque bâtiment a son emplacement), enfin
+   * le repère ou le socle le plus proche.
+   */
+  private slotAt(x: number, y: number): TowerSlot | null {
+    const slots = this.game.map.slots;
+    const radius = this.renderer.slotTouchRadius;
+    const screen = (s: TowerSlot) => this.renderer.slotScreen(s);
+    const withTower = slots.filter((s) => this.game.towerAt(s.id));
+    const tower = findSlotAt(withTower, x, y, radius, screen);
+    if (tower) return tower;
+    const building = this.renderer.buildingAt(x, y, false);
+    if (building) return slots.find((s) => s.buildingId === building.id) ?? null;
+    return findSlotAt(slots, x, y, radius, screen);
+  }
+
   private onCanvasTap(x: number, y: number): void {
     if (this.state === 'pickBase') return this.pickBaseAt(x, y);
     if (this.state !== 'playing') return;
-    const slot = findSlotAt(this.game.map.slots, x, y, this.renderer.slotTouchRadius, (s) =>
-      this.renderer.slotScreen(s),
-    );
+    const slot = this.slotAt(x, y);
     if (!slot) {
       this.closeMenus();
       this.selectedTowerId = null;

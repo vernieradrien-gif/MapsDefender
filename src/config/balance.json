@@ -28,7 +28,7 @@
     "total": 30,
     "prepSeconds": 10,
     "interWaveSeconds": 6,
-    "hpGrowth": 1.12,
+    "hpGrowth": 1.135,
     "countBase": 6,
     "countPerWave": 0.9,
     "spawnIntervalStart": 0.9,
@@ -121,14 +121,13 @@
   "mapRules": {
     "slotMinDistanceFromPath": 10,
     "slotMinSpacing": 28,
-    "roofMaxDistanceFromPath": 40,
     "padOffsetFromPath": 12,
     "padStep": 25,
     "padCoverageRadius": 30,
     "padClearance": 4,
     "padElevation": 0.6,
     "minSlots": 25,
-    "maxSlots": 60,
+    "maxPads": 60,
     "baseMaxDistanceFromPathEnd": 1
   },
   "osm": {

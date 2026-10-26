@@ -1,6 +1,6 @@
 import type { GameConfig } from '../config';
 import { validateMap } from '../game/mapValidation';
-import type { GameMap, Vec2 } from '../game/types';
+import type { GameMap } from '../game/types';
 import { roundMap, type MapReport } from './mapBuilder';
 import { OsmError } from './osmClient';
 import type { OverpassResponse } from './osm';
@@ -26,7 +26,7 @@ import type { LatLon } from './projection';
  * Version du générateur : une carte en cache construite par une version plus
  * ancienne est reconstruite quand on redemande le lieu (elle reste jouable d'ici là).
  */
-export const PLACE_MAP_VERSION = 1;
+export const PLACE_MAP_VERSION = 2;
 
 /** Description d'une carte générée (cache, accueil, aperçu). */
 export interface PlaceMapInfo {
@@ -117,8 +117,6 @@ export interface GenerationOutcome {
   place: PlaceMap;
   /** Pourquoi le lieu a été remplacé par une carte imaginaire (null sinon). */
   fallbackReason: string | null;
-  /** Données qui ont servi à construire la carte réelle (pour la reconstruire avec une autre base). */
-  source: BuildRequest | null;
 }
 
 /**
@@ -167,46 +165,27 @@ export async function generatePlaceMap(target: PlaceTarget, radius: number, deps
         baseAtAddress: report.baseAtAddress,
         osmDate: result.osmDate,
       };
-      return { place: { info, map }, fallbackReason: null, source: { place, responseText: text } };
+      return { place: { info, map }, fallbackReason: null };
     }
     problems.push(`${r} m : ${result.ok ? result.problems.join(', ') : result.error}`);
   }
   deps.onProgress?.({ step: 'fallback' });
   const place = imaginaryMap(placeSeedOf(target, radius), radius, target.name, config, now());
-  return {
-    place: { ...place, info: { ...place.info, center: target.center } },
-    fallbackReason: problems.join(' ; '),
-    source: null,
-  };
+  return { place: { ...place, info: { ...place.info, center: target.center } }, fallbackReason: problems.join(' ; ') };
 }
 
 const IMAGINARY_KINDS: DistrictKind[] = ['grille', 'diagonales', 'dense', 'grille'];
 
-/**
- * Reconstruit une carte réelle avec la base sur le bâtiment choisi par le joueur
- * (point en mètres dans le repère de la carte). Renvoie null si ce bâtiment ne
- * peut pas être la base (trop loin d'une rue, abri) ou si la carte n'est plus jouable.
- */
-export async function rebuildWithBase(
-  previous: PlaceMap,
-  source: BuildRequest,
-  at: Vec2,
-  build: MapBuildFn,
-): Promise<PlaceMap | null> {
-  const result = await build({ place: { ...source.place, baseAt: at }, responseText: source.responseText });
-  if (!result.ok || result.problems.length > 0 || !result.report.baseAtAddress) return null;
-  const { map, report } = result;
+/** Description mise à jour après un déplacement de la base par le joueur. */
+export function withMovedBase(info: PlaceMapInfo, report: MapReport): PlaceMapInfo {
   return {
-    map,
-    info: {
-      ...previous.info,
-      averageRouteLength: Math.round(report.averageRouteLength),
-      routes: report.routes,
-      entries: report.entries,
-      slots: report.slots,
-      baseAtAddress: false,
-      baseChosen: true,
-    },
+    ...info,
+    averageRouteLength: Math.round(report.averageRouteLength),
+    routes: report.routes,
+    entries: report.entries,
+    slots: report.slots,
+    baseAtAddress: false,
+    baseChosen: true,
   };
 }
 

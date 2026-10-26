@@ -35,7 +35,8 @@ L'appli affiche les vraies publicités AdMob **de test** de Google (bannière «
 - Avec une adresse précise (avec un numéro connu d'OpenStreetMap), la base est le bâtiment à cette adresse ; sinon, le bâtiment le plus imposant du quartier. Sur l'aperçu, **Choisir la base** affiche la carte en plein écran : zoome et touche ta maison, la carte est refaite autour d'elle.
 - Tu as 10 s de préparation avant la vague 1.
 - **Zoom** : pince avec deux doigts, ou utilise les boutons **+ / −** en bas à droite ; fais glisser un doigt pour déplacer la carte.
-- Touche un **toit marqué d'un ⊕** près d'une rue (ou un **socle** au sol) : un menu en arc propose les 4 dispositifs. Un dispositif trop cher est grisé.
+- Touche **n'importe quel bâtiment** (ou un **socle** au sol) : un menu en arc propose les 4 dispositifs. Un dispositif trop cher est grisé. Les ⊕ montrent une sélection de toits bien placés ; en zoomant, chaque toit montre le sien.
+- **Déplacer la base** : avant la première vague (bouton en bas à gauche), depuis la pause (la partie recommence) ou depuis l'aperçu d'un lieu, la carte s'affiche en plein écran ; zoome et touche le bâtiment voulu. Les virus prennent alors de nouveaux chemins.
   - **Pulvérisateur** (50) : tire vite, petits dégâts, une cible.
   - **Diffuseur** (100) : lance une capsule qui éclate en nuage désinfectant (dégâts de zone), lent.
   - **Laser UV** (150) : longue portée, gros dégâts, très lent (rayon instantané).
@@ -102,6 +103,17 @@ Le jeu reçoit une **carte** (`GameMap` dans `src/game/types.ts`) : itinéraires
 
 Choix faits sans validation explicite, à revoir si besoin.
 
+### Après le jalon 4 : retours du joueur (révision)
+
+- **Une tourelle sur chaque bâtiment** (demande du joueur, écart au § 4 étape 8 du cahier des charges, qui prévoyait un emplacement par bâtiment à moins de 40 m d'un itinéraire, espacés de 25 m, 25 à 60 par carte) : chaque bâtiment de la zone de jeu a son emplacement sur le toit, abris et garages compris, sauf la base. Les socles au sol restent posés là où un tronçon d'itinéraire n'a aucun emplacement proche (60 socles au plus) et quand il manque des emplacements (25 au minimum). Villagexpo passe de 60 à 405 emplacements (389 toits, 16 socles).
+- **Lisibilité** : sans zoom, les ⊕ ne montrent qu'une sélection (toits à moins de 40 m d'un itinéraire, espacés d'au moins 28 m, comme avant) ; à partir du zoom ×2, tous les toits visibles. Un toucher sur un bâtiment ouvre toujours son menu, avec ou sans ⊕ ; une tourelle déjà posée passe d'abord (elle est dessinée au-dessus des toits).
+- **Équilibrage refait** (plus d'emplacements = meilleures positions) : PV des virus ×1,135 par vague au lieu de ×1,12. Sur les 20 cartes types, le joueur moyen atteint la vague 14,7 (cible 12 à 15), le bon joueur 26,2 (15 % de victoires).
+- **Déplacer la base, sans réseau** : la carte est refaite à partir de ses propres rues, bâtiments et surfaces (itinéraires, emplacements, arbres) avec la base sur le bâtiment touché, dans le worker (l'écran ne se fige pas). Comme les rues connues s'arrêtent au bord du décor (90 m autour de la zone), les entrées sont à ce bord ; le reste ne change pas. Un abri, un bâtiment à plus de 60 m d'une rue, ou un choix qui rendrait la carte injouable est refusé avec un message. Possible sur toutes les cartes : lieux enregistrés (la nouvelle version remplace l'ancienne), Villagexpo et la démo (version personnelle gardée dans le cache, sous le même nom).
+- **Où** : sur l'aperçu d'un lieu (« Choisir la base »), en partie avant la première vague (bouton « Déplacer la base »), et dans la pause (« Déplacer la base (la partie recommence) »). Le toucher qui ouvre le mode est ignoré (400 ms) ; si le doigt tombe à côté d'une petite maison, la plus proche à moins de 18 px est prise.
+- **Numéro inconnu d'OpenStreetMap** : dans beaucoup de rues (par exemple à Saint-Michel-sur-Orge), OpenStreetMap n'a pas les numéros ; Nominatim renvoie la rue seule. Le jeu le dit (résultats et aperçu) et propose « Choisir la base ».
+- **Sauvegardes** : une partie sauvegardée garde l'empreinte de sa carte (nombre d'emplacements et d'itinéraires, position de la base) ; sur une carte modifiée depuis (base déplacée, emplacements refaits), elle n'est pas reprise (message, nouvelle partie). Les sauvegardes faites avant cette version ne sont pas reprises non plus. Version du générateur des cartes de lieux passée à 2 : une carte en cache est reconstruite quand on redemande le lieu.
+- **Zoom et déplacement** : ils existaient déjà (pincer, glisser un doigt, boutons + et −, molette) ; une astuce s'affiche maintenant une fois, à la première partie.
+
 ### Jalon 4 : carte depuis n'importe quel lieu
 
 - **Choisir un lieu** : un champ d'adresse et un bouton **Chercher** (pas d'autocomplétion, au plus une requête Nominatim toutes les 1,1 s). Jusqu'à 5 résultats ; les doublons (même nom, même commune, à moins de 400 m : la place, sa station de métro, ses rues) sont fusionnés. **Ma position** : la position n'est demandée qu'à l'appui ; le nom du lieu vient de Nominatim (recherche inverse), la carte reste centrée sur la position.
@@ -165,8 +177,8 @@ Choix faits sans validation explicite, à revoir si besoin.
 - **Base** : le bâtiment le plus imposant ou central (score = emprise × hauteur / (1 + (distance au centre / 80 m)²), parmi les bâtiments proches d'une rue) : c'est le **Hall du Villagexpo**. Il est relié à la rue la plus proche en coupant le tronçon à l'endroit le plus proche (plutôt qu'au carrefour le plus proche, parfois à plus de 100 m).
 - **Toutes les rues sont empruntées… sauf les impasses** : 60 tronçons sur 84 dans la zone (5,2 km sur 6,7 km de réseau). Les autres sont des impasses de plus de 30 m (Villagexpo en compte beaucoup) : on ne peut pas les emprunter sans demi-tour, donc sans repasser par un carrefour. Elles restent dessinées. `coverRoutes` cherche un itinéraire exact (calcul de flot) quand le plus court accès coupe la suite : seules les rues réellement impossibles à emprunter restent de côté (vérifié par un test exhaustif sur 60 quartiers aléatoires).
 - **Simplification (§ 4)** : plus grande composante connexe, impasses de moins de 30 m supprimées, Douglas-Peucker à 3 m sur les itinéraires. La fusion des nœuds à moins de 8 m ne fusionne que des carrefours reliés par une rue (deux impasses voisines non reliées ne sont pas raccordées). Les nœuds au bord de la zone et au-delà ne sont jamais déplacés ni supprimés. Les rues dessinées gardent leur tracé fin (0,5 m).
-- **Bâtiments réels** : presque tous sont étiquetés `building=yes`, et très peu ont un nombre d'étages. Le type est donc déduit des étiquettes, puis du nom (école, gymnase, hall, église… = bâtiment public ; « Résidence » = immeuble ; « Centre commercial » = commerce), puis de la surface : abri sous 25 m², maison sous 250 m², immeuble sous 1 500 m², grand bâtiment au-delà. Hauteur : `height`, sinon niveaux × 3 m, sinon 6 m (maison), 12 m (immeuble), 9 m (public), 7 m (commerce), 2,6 m (abri). Une maison dont l'emprise remplit au moins 88 % de son rectangle englobant a un toit à deux pans posé sur ce rectangle ; toutes les autres formes gardent leur vraie emprise avec un toit plat. Les abris de jardin n'accueillent pas de tourelle.
-- **Emplacements** : 60 toits (le maximum), au milieu du toit même pour un bâtiment en L ou en U.
+- **Bâtiments réels** : presque tous sont étiquetés `building=yes`, et très peu ont un nombre d'étages. Le type est donc déduit des étiquettes, puis du nom (école, gymnase, hall, église… = bâtiment public ; « Résidence » = immeuble ; « Centre commercial » = commerce), puis de la surface : abri sous 25 m², maison sous 250 m², immeuble sous 1 500 m², grand bâtiment au-delà. Hauteur : `height`, sinon niveaux × 3 m, sinon 6 m (maison), 12 m (immeuble), 9 m (public), 7 m (commerce), 2,6 m (abri). Une maison dont l'emprise remplit au moins 88 % de son rectangle englobant a un toit à deux pans posé sur ce rectangle ; toutes les autres formes gardent leur vraie emprise avec un toit plat. Depuis la révision qui suit le jalon 4, les abris de jardin ont eux aussi un emplacement.
+- **Emplacements** : un par bâtiment de la zone (405 : 389 toits et 16 socles, depuis la révision qui suit le jalon 4 ; 60 toits avant), au milieu du toit même pour un bâtiment en L ou en U.
 - **Décor** : 530 bâtiments, 83 rues, 20 surfaces ; arbres générés (1 855), pas importés.
 - **Fichier** : `src/geo/maps/villagexpo.json`, 249 Ko, coordonnées arrondies à 10 cm, avec la requête, la date des données et la licence. La carte est validée au chargement ; si elle est invalide, la carte de démonstration la remplace (message sur l'accueil). `?demo` force la carte de démonstration.
 - **Mention « © OpenStreetMap contributors »** sur l'écran d'accueil, dans Paramètres → À propos et dans ce README.
@@ -183,18 +195,18 @@ Choix faits sans validation explicite, à revoir si besoin.
 ### Jalon 2 : contenu et équilibrage
 
 - **Améliorations** : passer au niveau n (1 à 3) coûte coût × 1,6^n (Pulvérisateur : 80, 128, 205). Chaque niveau donne +60 % de dégâts, +15 % de cadence et +6 % de portée ; pour le Purificateur, +10 % de portée et 5 points de ralentissement en plus. **Revente** : 70 % du total investi (pose + améliorations), arrondi à l'inférieur.
-- **Boss** : un Méga-virus ferme la marche des vagues 10, 20 et 30. Ses PV suivent la même croissance que les autres virus (×1,12 par vague). Il retire 5 PV s'il atteint la base. Neutralisé, il se divise en 3 Amas qui repartent de sa position ; la vague n'est soldée qu'une fois les fragments résolus.
+- **Boss** : un Méga-virus ferme la marche des vagues 10, 20 et 30. Ses PV suivent la même croissance que les autres virus (×1,135 par vague, ×1,12 avant la révision qui suit le jalon 4). Il retire 5 PV s'il atteint la base. Neutralisé, il se divise en 3 Amas qui repartent de sa position ; la vague n'est soldée qu'une fois les fragments résolus.
 - **Adaptation à la carte** : facteur = longueur moyenne des itinéraires / 600 m, borné entre 0,75 et 1,5. Il multiplie le nombre de virus par vague et l'argent de départ (arrondi à 5). Villagexpo (775 m) : facteur 1,29, soit 260 crédits au départ.
 - **Menus** : construction par un menu radial en arc (4 boutons, nom sous chacun) ; les rôles et les prix sont rappelés dans l'aide. Menu radial d'une tourelle posée : Améliorer, Vendre, et une fiche (niveau, portée, bonus de hauteur).
 - **Simulation** (`npm run simulate`) : 20 quartiers types générés (6 grilles, 5 quartiers denses d'immeubles, 5 zones rurales clairsemées avec socles, 4 grilles à diagonales ; 1 à 4 entrées ; zones de 300 × 560 à 400 × 740 m), plus Villagexpo, 3 parties par carte et par joueur.
   - Joueur **moyen** : il pose dès qu'il peut sur un emplacement pris au hasard parmi les 35 % les mieux placés, alterne les dispositifs selon un cycle fixe, améliore de temps en temps, et n'agit qu'une fois toutes les 2 s.
   - Joueur **bon** : il choisit à chaque fois l'action la plus rentable (couverture des itinéraires × dégâts utiles / coût), quitte à économiser.
-- **Réglages issus de la simulation** : récompenses 8 / 7 / 15 / 35 / 40 crédits ; vitesses 35 / 58 / 38 / 21 / 16 m/s ; 6 virus à la vague 1, puis 0,9 de plus par vague. Résultat sur les 20 cartes types (simulation refaite au jalon 3, rues d'entrée venant de l'extérieur) :
+- **Réglages issus de la simulation** : récompenses 8 / 7 / 15 / 35 / 40 crédits ; vitesses 35 / 58 / 38 / 21 / 16 m/s ; 6 virus à la vague 1, puis 0,9 de plus par vague. PV ×1,135 par vague (×1,12 jusqu'au jalon 4). Résultat sur les 20 cartes types (simulation refaite après le jalon 4, avec un emplacement sur chaque bâtiment) :
 
   | Joueur | Vague atteinte (moyenne) | Victoires |
   |---|---|---|
-  | moyen | **14,2** (cible 12 à 15) | 0 % |
-  | bon | 26,1 | 2 % |
+  | moyen | **14,7** (cible 12 à 15) | 0 % |
+  | bon | 26,2 | 15 % |
 
   Écarts notés : la difficulté dépend beaucoup de la carte (une seule entrée : vague 16 à 24 pour le joueur moyen ; 4 entrées : vague 8 à 13). **Sur Villagexpo, le joueur moyen va beaucoup plus loin (vague 25 en moyenne)**, malgré ses 10 entrées : tous les itinéraires se rejoignent autour du Hall, entouré de toits, où quelques dispositifs couvrent tous les virus. Augmenter le nombre de virus ou réduire les emplacements changeait peu le résultat. L'adaptation à la carte ne tient compte que de la longueur des itinéraires, comme le demande le cahier des charges ; un critère d'« entonnoir » près de la base pourrait s'y ajouter au jalon 4, quand les cartes viendront de n'importe quelle adresse. La carte de démonstration est elle aussi très facile (les joueurs automatiques la gagnent) : elle sert de carte de secours et de découverte.
 - **Mode test** (`?debug`) : en plus des 5 000 crédits, la page expose `window.streetDefense` (avancer le temps, faire construire le joueur automatique, test de charge, coût d'une image), utilisé par `npm run captures`.
@@ -202,7 +214,7 @@ Choix faits sans validation explicite, à revoir si besoin.
 
 ### Révision 1 : ville miniature
 
-Décisions toujours valables : rendu pseudo-3D sur Canvas 2D sans moteur 3D, décor dessiné une seule fois dans un calque, police Fredoka embarquée, socles au sol quand les toits manquent, placement des emplacements (toits à moins de 40 m d'un itinéraire, espacés d'au moins 28 m), ciblage du virus le plus proche de la base. Remplacé par la révision 2 : les noms (Lance-bulles, Gloutons, gâteau…), les confettis, les chevrons sur le chemin unique.
+Décisions toujours valables : rendu pseudo-3D sur Canvas 2D sans moteur 3D, décor dessiné une seule fois dans un calque, police Fredoka embarquée, socles au sol quand les toits manquent, placement des emplacements (toits à moins de 40 m d'un itinéraire, espacés d'au moins 28 m ; remplacé après le jalon 4 par un emplacement sur chaque bâtiment), ciblage du virus le plus proche de la base. Remplacé par la révision 2 : les noms (Lance-bulles, Gloutons, gâteau…), les confettis, les chevrons sur le chemin unique.
 
 ### Jalon 1
 

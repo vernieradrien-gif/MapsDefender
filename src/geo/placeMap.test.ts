@@ -7,11 +7,12 @@ import { FIXTURE_CENTER, gridResponse } from './__tests__/osmFixture';
 import { isUnderground, landmarkOf, toBuilding } from './buildings';
 import { interiorPoint } from './geometry';
 import { OsmError } from './osmClient';
+import { moveBase } from './mapBuilder';
 import {
   buildPlaceMap,
   generatePlaceMap,
   imaginaryMap,
-  rebuildWithBase,
+  withMovedBase,
   type GenerationProgress,
   type MapBuildFn,
 } from './placeMap';
@@ -105,25 +106,26 @@ describe('carte générée depuis un lieu', () => {
     expect(plain.info.baseAtAddress).toBe(false);
   });
 
-  it('base choisie par le joueur : la carte est reconstruite autour du bâtiment touché', async () => {
-    const { place, source } = await generatePlaceMap(target(), 400, deps([grid]).value);
-    expect(source).not.toBeNull();
+  it('base déplacée par le joueur : carte refaite sans réseau autour du bâtiment choisi', async () => {
+    const { place } = await generatePlaceMap(target(), 400, deps([grid]).value);
     // Une maison au bord d'une rue, loin du grand magasin choisi d'abord.
     const house = place.map.buildings.find((b) => {
       const p = interiorPoint(b.footprint);
       return b.kind === 'house' && Math.abs(p.x - -64) < 1 && Math.abs(p.y - 110) < 1;
     })!;
     expect(house).toBeDefined();
-    const at = interiorPoint(house.footprint);
-    const rebuilt = (await rebuildWithBase(place, source!, at, directBuild(config)))!;
-    expect(rebuilt.map.baseBuildingId).toBe(house.id);
-    expect(rebuilt.info).toMatchObject({ baseChosen: true, key: place.info.key, mapId: place.info.mapId });
-    expect(validateMap(rebuilt.map, config.mapRules)).toEqual([]);
-    // Même lieu : mêmes bâtiments et mêmes arbres, seuls la base et les itinéraires changent.
-    expect(rebuilt.map.buildings).toEqual(place.map.buildings);
-    expect(rebuilt.map.trees.length).toBeGreaterThan(0);
-    // Un point sans bâtiment ne donne pas de base.
-    expect(await rebuildWithBase(place, source!, { x: 0, y: 50 }, directBuild(config))).toBeNull();
+    const moved = moveBase(place.map, house.id, config)!;
+    expect(moved.map.baseBuildingId).toBe(house.id);
+    expect(moved.map.id).toBe(place.map.id);
+    expect(validateMap(moved.map, config.mapRules)).toEqual([]);
+    // Mêmes rues et bâtiments ; la maison choisie n'a plus d'emplacement, l'ancienne base en a un.
+    expect(moved.map.buildings).toEqual(place.map.buildings);
+    expect(moved.map.slots.some((s) => s.buildingId === house.id)).toBe(false);
+    expect(moved.map.slots.some((s) => s.buildingId === place.map.baseBuildingId)).toBe(true);
+    expect(distance(moved.map.base, interiorPoint(house.footprint))).toBeLessThan(40);
+    expect(withMovedBase(place.info, moved.report)).toMatchObject({ baseChosen: true, key: place.info.key, routes: moved.report.routes });
+    // Un abri ou un bâtiment inconnu ne peut pas être la base.
+    expect(moveBase(place.map, 123456, config)).toBeNull();
   });
 
   it('lieu sans assez de rues : la zone est agrandie, avec une nouvelle requête', async () => {

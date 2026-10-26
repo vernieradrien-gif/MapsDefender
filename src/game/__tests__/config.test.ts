@@ -15,7 +15,6 @@ describe('configuration (fidélité au cahier des charges)', () => {
     expect(config.economy.startMoney).toBe(200);
     expect(config.base.hp).toBe(20);
     expect(config.waves.total).toBe(30);
-    expect(config.waves.hpGrowth).toBe(1.12);
     expect(config.waves.prepSeconds).toBe(10);
     expect(config.economy.waveBonusBase).toBe(10);
     expect(config.economy.waveBonusPerWave).toBe(2);

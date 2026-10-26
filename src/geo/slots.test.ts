@@ -40,12 +40,25 @@ describe('emplacements de tourelles', () => {
     }
   });
 
-  it('respectent l’espacement minimal', () => {
-    const slots = placeTowerSlots({ paths: [path], streets, buildings: houses(800), areas: [], bounds, base }, rules);
-    for (let i = 0; i < slots.length; i++) {
-      for (let j = i + 1; j < slots.length; j++) {
-        const d = Math.hypot(slots[i]!.x - slots[j]!.x, slots[i]!.y - slots[j]!.y);
-        expect(d).toBeGreaterThanOrEqual(rules.slotMinSpacing);
+  it('chaque bâtiment de la zone a son emplacement, même loin du chemin ou tout petit', () => {
+    const far: Building = { id: 999, footprint: orientedRect({ x: 300, y: -90 }, { x: 1, y: 0 }, 2, 2), height: 2.5, roof: 'flat', palette: 0, kind: 'annex' };
+    const outside: Building = { ...far, id: 998, footprint: orientedRect({ x: 300, y: -150 }, { x: 1, y: 0 }, 4, 4) };
+    const buildings = [...houses(800), far, outside];
+    const slots = placeTowerSlots({ paths: [path], streets, buildings, areas: [], bounds, base }, rules);
+    const roofIds = new Set(slots.filter((s) => s.kind === 'roof').map((s) => s.buildingId));
+    expect(roofIds.size).toBe(buildings.length - 1); // tous, sauf celui hors de la zone
+    expect(roofIds.has(999)).toBe(true);
+    expect(roofIds.has(998)).toBe(false);
+    // Les plus proches du chemin ont les premiers numéros.
+    expect(slots.find((s) => s.buildingId === 999)!.id).toBe(slots.length);
+  });
+
+  it('les socles respectent l’espacement minimal', () => {
+    const slots = placeTowerSlots({ paths: [path], streets, buildings: houses(400), areas: [], bounds, base }, rules);
+    for (const pad of slots.filter((s) => s.kind === 'pad')) {
+      for (const other of slots) {
+        if (other === pad) continue;
+        expect(Math.hypot(pad.x - other.x, pad.y - other.y)).toBeGreaterThanOrEqual(rules.slotMinSpacing);
       }
     }
   });
@@ -82,13 +95,13 @@ describe('emplacements de tourelles', () => {
     expect(slots.some((s) => s.x === 310 && s.y === 2)).toBe(false);
   });
 
-  it('ne dépasse jamais le maximum', () => {
+  it('ne pose jamais plus de socles que le maximum', () => {
     const many = { minX: -100, minY: -100, maxX: 5000, maxY: 100 };
     const long = { id: 'p', points: [{ x: 0, y: 0 }, { x: 5000, y: 0 }] };
     const slots = placeTowerSlots(
       { paths: [long], streets: [{ points: long.points, width: 10 }], buildings: [], areas: [], bounds: many, base: { x: 5000, y: 0 } },
       rules,
     );
-    expect(slots.length).toBeLessThanOrEqual(rules.maxSlots);
+    expect(slots.filter((s) => s.kind === 'pad').length).toBeLessThanOrEqual(rules.maxPads);
   });
 });

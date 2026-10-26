@@ -195,10 +195,15 @@
   "loading.numberMissing": "Ton numéro n’est pas dans OpenStreetMap : la carte est centrée sur la rue. Touche « Choisir la base » pour la mettre sur ta maison.",
   "loading.baseChosen": "La base est le bâtiment que tu as choisi.",
   "loading.pickBase": "Choisir la base",
-  "loading.rebuild": "Construction de la carte avec ta base",
   "pick.hint": "Zoome et touche le bâtiment où tu veux mettre la base.",
   "pick.cancel": "Annuler",
   "pick.noBuilding": "Touche un bâtiment (maison, immeuble…).",
   "pick.annex": "C’est un abri ou un garage : choisis un vrai bâtiment.",
-  "pick.refused": "Ce bâtiment ne peut pas être la base (trop loin d’une rue) : choisis-en un autre."
+  "pick.refused": "Ce bâtiment ne peut pas être la base (trop loin d’une rue, ou carte injouable) : choisis-en un autre.",
+  "hud.moveBase": "Déplacer la base",
+  "pause.moveBase": "Déplacer la base (la partie recommence)",
+  "pick.already": "La base est déjà sur ce bâtiment.",
+  "pick.building": "Nouvelle carte autour de ce bâtiment…",
+  "toast.baseMoved": "Base déplacée : nouvelle partie, les virus prennent de nouveaux chemins.",
+  "help.zoomHint": "Pince la carte pour zoomer, glisse un doigt pour la déplacer."
 }

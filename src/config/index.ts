@@ -137,10 +137,8 @@ export interface HeightBonusConfig {
 export interface MapRulesConfig {
   /** Distance minimale entre un emplacement au sol (socle) et l'axe d'une rue (m). */
   slotMinDistanceFromPath: number;
-  /** Distance minimale entre deux emplacements (m). */
+  /** Distance minimale entre un socle et un autre emplacement ou la base (m). */
   slotMinSpacing: number;
-  /** Un toit devient emplacement si le centre du bâtiment est à moins de cette distance d'un itinéraire (m). */
-  roofMaxDistanceFromPath: number;
   /** Distance des socles à l'axe de l'itinéraire (m). */
   padOffsetFromPath: number;
   /** Pas entre deux socles candidats le long de l'itinéraire (m). */
@@ -151,8 +149,10 @@ export interface MapRulesConfig {
   padClearance: number;
   /** Hauteur d'un socle (m), pour le rendu. */
   padElevation: number;
+  /** Emplacements au minimum (socles ajoutés si les toits ne suffisent pas). */
   minSlots: number;
-  maxSlots: number;
+  /** Socles au plus (chaque bâtiment a déjà son emplacement sur le toit). */
+  maxPads: number;
   baseMaxDistanceFromPathEnd: number;
 }
 
@@ -393,7 +393,7 @@ export function validateConfig(config: GameConfig): string[] {
   positive(r.slotMinSpacing, 'mapRules.slotMinSpacing');
   positive(r.padStep, 'mapRules.padStep');
   positive(r.minSlots, 'mapRules.minSlots');
-  if (r.maxSlots < r.minSlots) errors.push('mapRules.maxSlots doit être >= minSlots');
+  if (r.maxPads < r.minSlots) errors.push('mapRules.maxPads doit être >= minSlots');
 
   const o = config.osm;
   positive(o.zoneWidth, 'osm.zoneWidth');
