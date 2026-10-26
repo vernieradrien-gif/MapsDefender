@@ -27,7 +27,15 @@ export interface PlaceTarget {
   precise: boolean;
   /** Recherche d'origine, normalisée (null pour une position GPS). */
   query: string | null;
+  /**
+   * Le joueur a donné un numéro qu'OpenStreetMap ne connaît pas : Nominatim a
+   * renvoyé la rue seule. Le joueur pourra placer la base lui-même.
+   */
+  numberMissing?: boolean;
 }
+
+/** La recherche commence par un numéro de rue (« 12 », « 12 bis », « 12B »…). */
+export const hasHouseNumber = (query: string) => /^\s*\d{1,4}\s*(bis|ter|quater|[a-z])?(?![\p{L}\d])/iu.test(query);
 
 /** Recherche normalisée : minuscules, sans accents ni ponctuation, espaces simples. */
 export function normalizeQuery(query: string): string {
@@ -62,6 +70,7 @@ export function placeFromNominatim(result: NominatimResult, query: string | null
     detail: detail === name ? '' : detail,
     precise: Boolean(number),
     query: query === null ? null : normalizeQuery(query),
+    ...(query !== null && !number && hasHouseNumber(query) ? { numberMissing: true } : {}),
   };
 }
 

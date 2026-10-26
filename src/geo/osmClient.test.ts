@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { testConfig } from '../game/__tests__/helpers';
 import { HttpStatusError, OsmClient, OVERPASS_MIRRORS, overpassFailure, type HttpClient } from './osmClient';
-import { dedupePlaces, normalizeQuery, placeFromNominatim, placeKey, radiusSteps, type PlaceTarget } from './places';
+import { dedupePlaces, hasHouseNumber, normalizeQuery, placeFromNominatim, placeKey, radiusSteps, type PlaceTarget } from './places';
 
-const places = testConfig((c) => (c.places.nominatimInterval = 0.05)).places;
+// Un seul tour de serveurs par défaut ; le nouvel essai automatique a son propre test.
+const places = testConfig((c) => Object.assign(c.places, { nominatimInterval: 0.05, overpassRounds: 1 })).places;
 
 function fakeHttp(answer: (url: string) => string | Error): HttpClient & { urls: string[]; times: number[] } {
   const urls: string[] = [];
@@ -114,6 +115,20 @@ describe('téléchargement (Overpass)', () => {
     expect(http.urls).toHaveLength(OVERPASS_MIRRORS.length);
   });
 
+  it('tous saturés : pause, puis un nouveau tour des serveurs', async () => {
+    const retry = { ...places, overpassRounds: 2, overpassRetryPause: 0.02 };
+    let calls = 0;
+    const http = fakeHttp(() => (++calls <= OVERPASS_MIRRORS.length ? new HttpStatusError(502) : '{"elements":[]}'));
+    const progress: string[] = [];
+    const text = await new OsmClient(http, retry).overpass('q', new AbortController().signal, (p) =>
+      progress.push(p.kind === 'pause' ? `pause ${p.seconds}` : `${p.round}:${p.attempt}`),
+    );
+    expect(text).toBe('{"elements":[]}');
+    expect(http.urls).toHaveLength(OVERPASS_MIRRORS.length + 1);
+    expect(progress).toEqual(['0:0', '0:1', '0:2', 'pause 0.02', '1:0']);
+    expect(http.times[3]! - http.times[2]!).toBeGreaterThanOrEqual(15);
+  });
+
   it('annulé : on n’essaie pas les autres miroirs', async () => {
     const controller = new AbortController();
     const http = fakeHttp(() => {
@@ -163,6 +178,27 @@ describe('lieux', () => {
       'Rue Bellecour 45.7577',
       'Place Bellecour 45.78',
     ]);
+  });
+
+  it('numéro de rue inconnu d’OpenStreetMap : signalé (le joueur placera la base)', () => {
+    expect(hasHouseNumber('8 rue Victor Hugo, Saint-Michel-sur-Orge')).toBe(true);
+    expect(hasHouseNumber('12bis avenue Foch')).toBe(true);
+    expect(hasHouseNumber('3, place du Marché')).toBe(true);
+    expect(hasHouseNumber('75004 Paris')).toBe(false);
+    expect(hasHouseNumber('Rue Victor Hugo')).toBe(false);
+    const street = {
+      lat: '48.6379',
+      lon: '2.3091',
+      display_name: 'Rue Victor Hugo, Saint-Michel-sur-Orge, France',
+      name: 'Rue Victor Hugo',
+      address: { road: 'Rue Victor Hugo', town: 'Saint-Michel-sur-Orge', postcode: '91240' },
+    };
+    expect(placeFromNominatim(street, '8 rue Victor Hugo, Saint-Michel-sur-Orge')).toMatchObject({
+      name: 'Rue Victor Hugo',
+      precise: false,
+      numberMissing: true,
+    });
+    expect(placeFromNominatim(street, 'Rue Victor Hugo').numberMissing).toBeUndefined();
   });
 
   it('clé de cache à environ 10 m près, et rayons essayés', () => {

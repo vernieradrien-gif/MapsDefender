@@ -9,11 +9,16 @@ import type { LatLon } from './projection';
 // troisième serveur).
 
 export const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
+// Ordre tiré de l'essai des 20 adresses (26/10/2026) : le serveur principal a
+// répondu 18 fois, VK Maps 8 fois, private.coffee une fois.
 export const OVERPASS_MIRRORS = [
   'https://overpass-api.de/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ] as const;
+
+/** Progression d'un téléchargement Overpass, pour l'écran de chargement. */
+export type OverpassProgress = { kind: 'attempt'; attempt: number; round: number } | { kind: 'pause'; seconds: number };
 
 /** Statut HTTP en erreur (4xx, 5xx). */
 export class HttpStatusError extends Error {
@@ -111,21 +116,27 @@ export class OsmClient {
   }
 
   /**
-   * Données Overpass (texte JSON), en essayant les miroirs l'un après l'autre ;
-   * `onAttempt` reçoit le numéro de l'essai (0 : serveur principal).
+   * Données Overpass (texte JSON) : les serveurs l'un après l'autre ; s'ils sont
+   * tous saturés, pause (règle d'usage : 30 s) puis nouveau tour.
    */
-  async overpass(query: string, signal: AbortSignal, onAttempt?: (attempt: number) => void): Promise<string> {
+  async overpass(query: string, signal: AbortSignal, onProgress?: (progress: OverpassProgress) => void): Promise<string> {
     const errors: string[] = [];
-    for (const [attempt, mirror] of OVERPASS_MIRRORS.entries()) {
-      onAttempt?.(attempt);
-      try {
-        const text = await this.http.getText(`${mirror}?data=${encodeURIComponent(query)}`, { signal, timeoutMs: this.timeoutMs });
-        const failure = overpassFailure(text);
-        if (failure) throw new Error(failure);
-        return text;
-      } catch (error) {
-        if (signal.aborted) throw abortError();
-        errors.push(`${new URL(mirror).host} : ${describe(error)}`);
+    for (let round = 0; round < this.config.overpassRounds; round++) {
+      if (round > 0) {
+        onProgress?.({ kind: 'pause', seconds: this.config.overpassRetryPause });
+        await wait(this.config.overpassRetryPause * 1000, signal);
+      }
+      for (const [attempt, mirror] of OVERPASS_MIRRORS.entries()) {
+        onProgress?.({ kind: 'attempt', attempt, round });
+        try {
+          const text = await this.http.getText(`${mirror}?data=${encodeURIComponent(query)}`, { signal, timeoutMs: this.timeoutMs });
+          const failure = overpassFailure(text);
+          if (failure) throw new Error(failure);
+          return text;
+        } catch (error) {
+          if (signal.aborted) throw abortError();
+          errors.push(`${new URL(mirror).host} : ${describe(error)}`);
+        }
       }
     }
     throw new OsmError('overpass', `Overpass : aucun serveur n'a répondu (${errors.join(' ; ')})`);

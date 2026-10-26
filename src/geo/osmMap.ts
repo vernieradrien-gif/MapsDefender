@@ -1,5 +1,5 @@
 import type { GameConfig } from '../config';
-import type { Area, Building, Street } from '../game/types';
+import type { Area, Building, Street, Vec2 } from '../game/types';
 import { hashString, toBuilding } from './buildings';
 import { clipPolygonToRect, clipPolylineToRect, douglasPeucker, interiorPoint, polygonArea } from './geometry';
 import { assembleMap, expand, type MapSource } from './mapBuilder';
@@ -24,6 +24,8 @@ export interface OsmPlace {
   seedKey?: string;
   /** Adresse précise (avec numéro) : la base est le bâtiment au point géocodé. */
   precise?: boolean;
+  /** Base choisie par le joueur : le bâtiment à ce point (m, repère de la carte), prioritaire sur `precise`. */
+  baseAt?: Vec2;
 }
 
 /** Zone de jeu (m), centrée sur le lieu, à la taille du rayon. */
@@ -105,7 +107,7 @@ export function osmMapSource(place: OsmPlace, response: OverpassResponse, config
     buildings,
     areas,
     center: { x: 0, y: 0 },
-    ...(place.precise ? { baseAt: { x: 0, y: 0 } } : {}),
+    ...(place.baseAt ? { baseAt: place.baseAt } : place.precise ? { baseAt: { x: 0, y: 0 } } : {}),
     attribution: OSM_ATTRIBUTION,
   };
 }

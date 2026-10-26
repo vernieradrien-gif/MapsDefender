@@ -12,8 +12,20 @@ import { createHttp } from './geo/http';
 import { createMapBuilder } from './geo/mapBuilderClient';
 import { loadGameMap, MAP_IDS } from './geo/maps';
 import { OsmClient, OsmError } from './geo/osmClient';
-import { generatePlaceMap, imaginaryMap, PLACE_MAP_VERSION, type MapBuildFn, type PlaceMap, type PlaceMapInfo } from './geo/placeMap';
-import { placeKey, type PlaceTarget } from './geo/places';
+import { placeQuery, type OsmPlace } from './geo/osmMap';
+import {
+  generatePlaceMap,
+  imaginaryMap,
+  PLACE_MAP_VERSION,
+  rebuildWithBase,
+  type BuildRequest,
+  type MapBuildFn,
+  type PlaceMap,
+  type PlaceMapInfo,
+} from './geo/placeMap';
+import { placeKey, placeSeedKey, type PlaceTarget } from './geo/places';
+import { interiorPoint } from './geo/geometry';
+import type { OverpassProgress } from './geo/osmClient';
 import type { LatLon } from './geo/projection';
 import { t } from './i18n';
 import type { ViewRect } from './render/camera';
@@ -38,13 +50,21 @@ import { towerIcon } from './ui/icons';
 import { attachGestures, findSlotAt } from './ui/input';
 import { LoadingScreen } from './ui/loadingScreen';
 import { HelpScreen, HomeScreen, SettingsScreen, UpgradesScreen, type MapChoice, type UpgradeView } from './ui/menus';
+import { PickBanner } from './ui/pickBanner';
 import { PlaceScreen } from './ui/placeScreen';
 import { RadialMenu } from './ui/radialMenu';
 import { EndScreen, PauseScreen, Toast } from './ui/screens';
 import { TowerMenu, type TowerMenuInfo } from './ui/towerMenu';
 
 /** `ad` : une publicité est affichée, le jeu est figé. */
-type AppState = 'home' | 'playing' | 'paused' | 'ended' | 'ad';
+/** `pickBase` : le joueur touche sur la carte le bâtiment qui sera la base. */
+type AppState = 'home' | 'playing' | 'paused' | 'ended' | 'ad' | 'pickBase';
+
+/** Comment la carte prête a été obtenue (notes de l'aperçu). */
+interface ReadyHow {
+  cached: boolean;
+  fallback: boolean;
+}
 
 export interface AppOptions {
   /** Mode test (`?debug` dans l'adresse) : argent de départ augmenté, commandes de test. */
@@ -79,6 +99,8 @@ const SHARE_URL = 'https://vernieradrien-gif.github.io/MapsDefender/';
 const BUILT_IN = new Set<string>(MAP_IDS);
 /** Nombre de cartes récentes sur l'accueil. */
 const HOME_MAPS = 3;
+/** Délai (ms) pendant lequel un toucher n'est pas pris en compte en entrant dans « Choisir la base ». */
+const PICK_GRACE_MS = 400;
 
 /** Lieu demandé (pour « Réessayer ») : un résultat de recherche ou la position du joueur. */
 type PlaceRequest = { kind: 'target'; target: PlaceTarget } | { kind: 'position'; center: LatLon };
@@ -117,6 +139,7 @@ export class App {
   private readonly placeScreen: PlaceScreen;
   private readonly loading: LoadingScreen;
   private readonly toast: Toast;
+  private readonly pickBanner: PickBanner;
 
   /** Lieux : cache des cartes générées, service OSM, construction, état de l'écran de choix. */
   private mapCache: MapCache | null = null;
@@ -130,6 +153,12 @@ export class App {
   private placeMessage: { text: string; error: boolean } | null = null;
   private lastRequest: PlaceRequest | null = null;
   private readyPlace: PlaceMap | null = null;
+  /** Lieu, données et notes de la carte prête (pour la reconstruire avec une autre base). */
+  private readyTarget: PlaceTarget | null = null;
+  private readySource: BuildRequest | null = null;
+  private readyHow: ReadyHow = { cached: false, fallback: false };
+  /** Début du mode « Choisir la base » (le toucher qui l'ouvre ne choisit rien). */
+  private pickStartedAt = 0;
 
   private selectedTowerId: number | null = null;
   private selectionExpiresAt = 0;
@@ -180,6 +209,7 @@ export class App {
       onSell: () => this.sellSelected(),
     });
     this.toast = new Toast(root);
+    this.pickBanner = new PickBanner(root, () => this.cancelPickBase());
     this.home = new HomeScreen(root, {
       onPlay: () => this.startNewGame(),
       onResume: () => void this.resumeGame(),
@@ -246,6 +276,7 @@ export class App {
       onPlay: () => this.playReadyPlace(),
       onBack: () => this.openPlaces(),
       onImaginary: () => void this.imaginary(),
+      onPickBase: () => this.startPickBase(),
     });
     this.endScreen = new EndScreen(root, {
       onReplay: () => this.startNewGame(),
@@ -554,7 +585,11 @@ export class App {
       radii: this.config.places.radii,
       busy: this.placeBusy,
       message: this.placeMessage,
-      results: this.placeResults.map((r) => ({ name: r.name, detail: r.detail })),
+      results: this.placeResults.map((r) => ({
+        name: r.name,
+        detail: r.detail,
+        note: r.numberMissing ? t('place.numberMissing') : null,
+      })),
       saved: this.mapChoices(),
       selectedMapId: this.map.id,
       volatileCache: this.mapCache !== null && !this.mapCache.persistent,
@@ -666,16 +701,14 @@ export class App {
       const cached = await this.mapCache?.get(placeKey(target.center, radius));
       if (cached && cached.info.version === PLACE_MAP_VERSION) {
         this.generation = null;
+        this.readySource = null;
         return this.showReady(cached, target, { cached: true, fallback: false });
       }
       const outcome = await generatePlaceMap(target, radius, {
         config: this.config,
         signal,
         build: this.mapBuilder(),
-        overpass: (query, s) =>
-          this.osm.overpass(query, s, (attempt) => {
-            if (attempt > 0) this.loading.setStep('download', 'active', t('loading.mirror', { n: attempt }));
-          }),
+        overpass: (query, s) => this.osm.overpass(query, s, (p) => this.showDownload(p)),
         onProgress: (p) => {
           if (p.step === 'download') {
             this.loading.setStep('download', 'active', p.enlarged ? t('loading.enlarge', { radius: p.radius }) : t('loading.download'));
@@ -689,6 +722,7 @@ export class App {
         await this.mapCache.save(outcome.place, this.keptPlaceKeys());
         this.placeInfos = await this.mapCache.list();
       }
+      this.readySource = outcome.source;
       this.showReady(outcome.place, target, { cached: false, fallback: outcome.fallbackReason !== null });
     } catch (error) {
       if (signal.aborted) return;
@@ -699,14 +733,18 @@ export class App {
   }
 
   /** Aperçu du tracé et « Jouer ici ». */
-  private showReady(place: PlaceMap, target: PlaceTarget | null, how: { cached: boolean; fallback: boolean }): void {
+  private showReady(place: PlaceMap, target: PlaceTarget | null, how: ReadyHow): void {
     this.readyPlace = place;
+    this.readyTarget = target;
+    this.readyHow = how;
     const info = place.info;
     const notes: string[] = [];
     if (how.fallback) notes.push(t('loading.fallbackNote'));
     if (how.cached) notes.push(t('loading.cached'));
     if (!info.imaginary && info.radius > info.requestedRadius) notes.push(t('loading.enlarged', { radius: info.radius }));
-    if (!info.imaginary && target?.precise) notes.push(t(info.baseAtAddress ? 'loading.baseAtAddress' : 'loading.noBuildingAtAddress'));
+    if (info.baseChosen) notes.push(t('loading.baseChosen'));
+    else if (!info.imaginary && target?.numberMissing) notes.push(t('loading.numberMissing'));
+    else if (!info.imaginary && target?.precise) notes.push(t(info.baseAtAddress ? 'loading.baseAtAddress' : 'loading.noBuildingAtAddress'));
     this.hideOverlays();
     this.loading.showResult({
       map: place.map,
@@ -719,7 +757,117 @@ export class App {
       }),
       notes,
       osm: !info.imaginary,
+      canPickBase: !info.imaginary && info.center !== null && target !== null,
     });
+  }
+
+  /** Étape « Téléchargement » : serveur de secours, pause avant un nouveau tour. */
+  private showDownload(p: OverpassProgress): void {
+    if (p.kind === 'pause') {
+      this.loading.setStep('download', 'active', t('loading.pause', { seconds: p.seconds }));
+    } else if (p.round > 0) {
+      this.loading.setStep('download', 'active', t('loading.mirrorRetry', { n: p.attempt + 1 }));
+    } else if (p.attempt > 0) {
+      this.loading.setStep('download', 'active', t('loading.mirror', { n: p.attempt }));
+    }
+  }
+
+  // --- Choisir la base sur la carte ----------------------------------------------
+
+  /** Carte prête affichée en plein écran, zoomable : le joueur touche le bâtiment de la base. */
+  private startPickBase(): void {
+    const place = this.readyPlace;
+    if (!place) return;
+    this.hideOverlays();
+    this.closeMenus();
+    this.state = 'pickBase';
+    this.pickStartedAt = performance.now();
+    this.root.classList.add('picking');
+    // Partie provisoire sur cette carte : le rendu montre ses emplacements, pas ceux d'une autre carte.
+    this.game = new Game(place.map, this.config);
+    this.renderer.resetView();
+    this.renderer.setMap(place.map);
+    this.pickBanner.show();
+  }
+
+  /** Quitte le mode sans rien changer : la carte du jeu revient derrière les écrans. */
+  private leavePickBase(): void {
+    this.pickBanner.hide();
+    this.root.classList.remove('picking');
+    this.state = 'home';
+    this.game = this.createGame();
+    this.renderer.resetView();
+    this.renderer.setMap(this.map);
+  }
+
+  private cancelPickBase(): void {
+    if (this.state !== 'pickBase') return;
+    this.leavePickBase();
+    if (this.readyPlace) this.showReady(this.readyPlace, this.readyTarget, this.readyHow);
+  }
+
+  private pickBaseAt(x: number, y: number): void {
+    if (performance.now() - this.pickStartedAt < PICK_GRACE_MS) return;
+    const building = this.renderer.buildingAt(x, y);
+    if (!building) return this.toast.show(t('pick.noBuilding'), 2200);
+    if (building.kind === 'annex') return this.toast.show(t('pick.annex'), 2600);
+    void this.rebuildBase(interiorPoint(building.footprint));
+  }
+
+  /** Reconstruit la carte prête avec la base sur le bâtiment touché (données gardées, sinon retéléchargées). */
+  private async rebuildBase(at: { x: number; y: number }): Promise<void> {
+    const ready = this.readyPlace;
+    const target = this.readyTarget;
+    if (!ready || !target || !ready.info.center) return;
+    this.leavePickBase();
+    const controller = new AbortController();
+    const { signal } = controller;
+    this.generation = controller;
+    const steps = [
+      ...(this.readySource ? [] : [{ id: 'download', label: t('loading.download') }]),
+      { id: 'build', label: t('loading.rebuild') },
+    ];
+    this.loading.start(ready.info.name, steps);
+    try {
+      let source = this.readySource;
+      if (!source) {
+        this.loading.setStep('download', 'active');
+        const info = ready.info;
+        const place: OsmPlace = {
+          id: info.mapId,
+          name: info.name,
+          center: info.center!,
+          radius: info.radius,
+          seedKey: placeSeedKey(target, info.requestedRadius),
+          precise: target.precise,
+        };
+        const text = await this.osm.overpass(placeQuery(place, this.config), signal, (p) => this.showDownload(p));
+        source = { place, responseText: text };
+        this.readySource = source;
+      }
+      if (signal.aborted) return;
+      this.loading.setStep('build', 'active');
+      const rebuilt = await rebuildWithBase(ready, source, at, this.mapBuilder());
+      if (signal.aborted) return;
+      this.generation = null;
+      if (!rebuilt) {
+        this.startPickBase();
+        this.toast.show(t('pick.refused'), 3000);
+        return;
+      }
+      // La carte change sous le même nom : une partie sauvegardée dessus ne peut plus être reprise.
+      if (loadSavedGame()?.snapshot.mapId === rebuilt.map.id) clearSavedGame();
+      if (this.mapCache) {
+        await this.mapCache.save(rebuilt, this.keptPlaceKeys());
+        this.placeInfos = await this.mapCache.list();
+      }
+      if (this.map.id === rebuilt.map.id) this.applyMap(rebuilt.map);
+      this.showReady(rebuilt, target, { cached: false, fallback: false });
+    } catch (error) {
+      if (signal.aborted) return;
+      this.generation = null;
+      this.loading.showError(this.placeError(error), true);
+    }
   }
 
   private playReadyPlace(): void {
@@ -932,6 +1080,7 @@ export class App {
   }
 
   private onCanvasTap(x: number, y: number): void {
+    if (this.state === 'pickBase') return this.pickBaseAt(x, y);
     if (this.state !== 'playing') return;
     const slot = findSlotAt(this.game.map.slots, x, y, this.renderer.slotTouchRadius, (s) =>
       this.renderer.slotScreen(s),
@@ -1038,6 +1187,9 @@ export class App {
         return 'handled';
       case 'ended':
         void this.leaveEndScreen();
+        return 'handled';
+      case 'pickBase':
+        this.cancelPickBase();
         return 'handled';
       case 'home':
         if (this.loading.visible) {

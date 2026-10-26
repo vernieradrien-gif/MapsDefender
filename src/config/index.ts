@@ -245,6 +245,10 @@ export interface PlacesConfig {
   overpassTimeout: number;
   /** Attente maximale d'une réponse du réseau (s). */
   requestTimeout: number;
+  /** Tours de tous les serveurs Overpass avant d'abandonner (2 : un nouvel essai automatique). */
+  overpassRounds: number;
+  /** Pause avant un nouveau tour quand tous les serveurs sont saturés (s ; règle d'usage : 30 s). */
+  overpassRetryPause: number;
   /** Cartes gardées en cache sur l'appareil (les moins récemment jouées partent d'abord). */
   cacheMaxMaps: number;
   /** Graines essayées pour la carte imaginaire de secours. */
@@ -413,6 +417,8 @@ export function validateConfig(config: GameConfig): string[] {
   nonNegative(pl.nominatimInterval, 'places.nominatimInterval');
   positive(pl.overpassTimeout, 'places.overpassTimeout');
   if (!(pl.requestTimeout > pl.overpassTimeout)) errors.push('places.requestTimeout doit dépasser overpassTimeout');
+  positive(pl.overpassRounds, 'places.overpassRounds');
+  nonNegative(pl.overpassRetryPause, 'places.overpassRetryPause');
   positive(pl.cacheMaxMaps, 'places.cacheMaxMaps');
   positive(pl.fallbackAttempts, 'places.fallbackAttempts');
 

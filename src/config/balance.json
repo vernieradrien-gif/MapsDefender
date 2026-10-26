@@ -182,6 +182,8 @@
     "nominatimInterval": 1.1,
     "overpassTimeout": 20,
     "requestTimeout": 45,
+    "overpassRounds": 2,
+    "overpassRetryPause": 30,
     "cacheMaxMaps": 20,
     "fallbackAttempts": 8
   },

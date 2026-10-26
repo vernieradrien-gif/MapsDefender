@@ -1,6 +1,6 @@
 import type { GameConfig } from '../config';
 import { validateMap } from '../game/mapValidation';
-import type { GameMap } from '../game/types';
+import type { GameMap, Vec2 } from '../game/types';
 import { roundMap, type MapReport } from './mapBuilder';
 import { OsmError } from './osmClient';
 import type { OverpassResponse } from './osm';
@@ -51,6 +51,8 @@ export interface PlaceMapInfo {
   slots: number;
   /** La base est le bâtiment à l'adresse demandée. */
   baseAtAddress: boolean;
+  /** La base a été choisie par le joueur (bâtiment touché sur la carte). */
+  baseChosen?: boolean;
   /** Date des données OpenStreetMap. */
   osmDate: string | null;
 }
@@ -115,6 +117,8 @@ export interface GenerationOutcome {
   place: PlaceMap;
   /** Pourquoi le lieu a été remplacé par une carte imaginaire (null sinon). */
   fallbackReason: string | null;
+  /** Données qui ont servi à construire la carte réelle (pour la reconstruire avec une autre base). */
+  source: BuildRequest | null;
 }
 
 /**
@@ -163,16 +167,48 @@ export async function generatePlaceMap(target: PlaceTarget, radius: number, deps
         baseAtAddress: report.baseAtAddress,
         osmDate: result.osmDate,
       };
-      return { place: { info, map }, fallbackReason: null };
+      return { place: { info, map }, fallbackReason: null, source: { place, responseText: text } };
     }
     problems.push(`${r} m : ${result.ok ? result.problems.join(', ') : result.error}`);
   }
   deps.onProgress?.({ step: 'fallback' });
   const place = imaginaryMap(placeSeedOf(target, radius), radius, target.name, config, now());
-  return { place: { ...place, info: { ...place.info, center: target.center } }, fallbackReason: problems.join(' ; ') };
+  return {
+    place: { ...place, info: { ...place.info, center: target.center } },
+    fallbackReason: problems.join(' ; '),
+    source: null,
+  };
 }
 
 const IMAGINARY_KINDS: DistrictKind[] = ['grille', 'diagonales', 'dense', 'grille'];
+
+/**
+ * Reconstruit une carte réelle avec la base sur le bâtiment choisi par le joueur
+ * (point en mètres dans le repère de la carte). Renvoie null si ce bâtiment ne
+ * peut pas être la base (trop loin d'une rue, abri) ou si la carte n'est plus jouable.
+ */
+export async function rebuildWithBase(
+  previous: PlaceMap,
+  source: BuildRequest,
+  at: Vec2,
+  build: MapBuildFn,
+): Promise<PlaceMap | null> {
+  const result = await build({ place: { ...source.place, baseAt: at }, responseText: source.responseText });
+  if (!result.ok || result.problems.length > 0 || !result.report.baseAtAddress) return null;
+  const { map, report } = result;
+  return {
+    map,
+    info: {
+      ...previous.info,
+      averageRouteLength: Math.round(report.averageRouteLength),
+      routes: report.routes,
+      entries: report.entries,
+      slots: report.slots,
+      baseAtAddress: false,
+      baseChosen: true,
+    },
+  };
+}
 
 /** Quartier imaginaire jouable (secours, ou hors connexion), déterminé par la graine. */
 export function imaginaryMap(seed: number, radius: number, name: string, config: GameConfig, now: number): PlaceMap {

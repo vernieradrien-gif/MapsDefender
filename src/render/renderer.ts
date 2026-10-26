@@ -1,9 +1,13 @@
 import type { Game, Projectile } from '../game/game';
-import type { GameMap, TowerSlot, Vec2 } from '../game/types';
+import type { Building, GameMap, TowerSlot, Vec2 } from '../game/types';
 import { interiorPoint } from '../geo/geometry';
 import { Camera, type ViewRect } from './camera';
 import { buildingTopHeight, drawCity, entryScreen, liftPx, padTopPx } from './cityLayer';
 import type { Effects } from './effects';
+import { buildingAtScreen } from './picking';
+
+/** Portée du doigt (px CSS) pour désigner un bâtiment trop petit à l'écran. */
+const PICK_TOLERANCE_PX = 18;
 import { drawBaseGauge, drawCapsule, drawDroplet, drawEnemy, drawSlotMarker, drawTower, towerMuzzleHeight } from './sprites';
 import { theme } from './theme';
 
@@ -156,6 +160,15 @@ export class Renderer {
     );
     this.layerCamera = { scale: this.camera.scale, offsetX: this.camera.offsetX, offsetY: this.camera.offsetY };
     this.layerStale = false;
+  }
+
+  /** Bâtiment dessiné sous ce point de l'écran (px CSS), ou null. */
+  buildingAt(x: number, y: number): Building | null {
+    const map = this.map;
+    if (!map) return null;
+    const cam = this.camera;
+    const project = (p: Vec2, h: number) => ({ x: cam.sx(p.x), y: cam.sy(p.y) - liftPx(cam, h) });
+    return buildingAtScreen(map.buildings, project, buildingTopHeight, { x, y }, PICK_TOLERANCE_PX);
   }
 
   /** Point de l'écran où se trouve le haut du support d'un emplacement. */
