@@ -6,8 +6,10 @@
 //   npm run test-places -- --offline    # rejoue les réponses gardées (scripts/.cache/places)
 //   npm run test-places -- --only 3     # une seule adresse (numéro dans la liste)
 //
-// Si les serveurs Overpass sont saturés, l'adresse est réessayée plus tard
-// (jusqu'à 3 fois, une minute d'écart) : les réponses déjà reçues sont gardées.
+// Le script est plus patient que l'appli (90 s par serveur au lieu de 25) pour
+// mesurer la génération même quand les serveurs publics sont lents ; si tous
+// sont saturés, l'adresse est réessayée plus tard (jusqu'à 4 fois, 90 s
+// d'écart). Les réponses déjà reçues sont gardées.
 // Écrit le compte rendu dans docs/essai-adresses.md.
 
 import { createHash } from 'node:crypto';
@@ -47,8 +49,9 @@ const cacheDir = join(root, 'scripts', '.cache', 'places');
 const offline = process.argv.includes('--offline');
 const onlyArg = process.argv.indexOf('--only');
 const only = onlyArg >= 0 ? Number(process.argv[onlyArg + 1]) : null;
-const RETRIES = 3;
-const RETRY_PAUSE_MS = 60_000;
+const RETRIES = 4;
+const RETRY_PAUSE_MS = 90_000;
+const PATIENT_TIMEOUT_S = 90;
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type CachingHttp = HttpClient & { bytes: number };
@@ -157,7 +160,7 @@ async function report(rows: Row[], radius: number): Promise<void> {
 async function main(): Promise<void> {
   const config = loadConfig();
   const http = cachingHttp(fetchHttp({ 'User-Agent': `${USER_AGENT} essai-adresses` }));
-  const client = new OsmClient(http, config.places);
+  const client = new OsmClient(http, { ...config.places, requestTimeout: PATIENT_TIMEOUT_S });
   const rows: Row[] = [];
   for (const [i, query] of ADDRESSES.entries()) {
     if (only !== null && only !== i + 1) continue;

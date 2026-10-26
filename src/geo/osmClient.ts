@@ -4,13 +4,15 @@ import type { LatLon } from './projection';
 
 // Appels aux services OpenStreetMap depuis l'appli (aucun serveur à nous) :
 // Nominatim (une requête par seconde au plus, recherche lancée par un bouton)
-// et Overpass (une requête par carte, deux miroirs de secours).
+// et Overpass (une requête par carte, deux serveurs de secours indépendants :
+// overpass.kumi.systems est devenu overpass.private.coffee, ce n'est pas un
+// troisième serveur).
 
 export const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
 export const OVERPASS_MIRRORS = [
   'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ] as const;
 
 /** Statut HTTP en erreur (4xx, 5xx). */
