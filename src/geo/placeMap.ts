@@ -106,7 +106,7 @@ export function buildPlaceMap(request: BuildRequest, config: GameConfig): BuildR
 export interface GenerateDeps {
   config: GameConfig;
   /** Requête Overpass (texte JSON de la réponse). */
-  overpass: (query: string, signal: AbortSignal) => Promise<string>;
+  overpass: (query: string, signal: AbortSignal, where: LatLon) => Promise<string>;
   build: MapBuildFn;
   onProgress?: (progress: GenerationProgress) => void;
   signal: AbortSignal;
@@ -139,7 +139,7 @@ export async function generatePlaceMap(target: PlaceTarget, radius: number, deps
       precise: target.precise,
     };
     deps.onProgress?.({ step: 'download', radius: r, enlarged: r > radius });
-    const text = await deps.overpass(placeQuery(place, config), signal);
+    const text = await deps.overpass(placeQuery(place, config), signal, place.center);
     if (signal.aborted) throw new OsmError('aborted', 'annulé');
     deps.onProgress?.({ step: 'build', radius: r });
     const result = await deps.build({ place, responseText: text });

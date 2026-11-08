@@ -61,7 +61,7 @@ async function geocode(): Promise<NominatimResult> {
 
 async function overpass(body: string): Promise<OverpassResponse> {
   const errors: string[] = [];
-  for (const mirror of OVERPASS_MIRRORS) {
+  for (const { url: mirror } of OVERPASS_MIRRORS) {
     try {
       const res = await fetch(mirror, {
         method: 'POST',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { testConfig } from '../game/__tests__/helpers';
-import { HttpStatusError, OsmClient, OVERPASS_MIRRORS, overpassFailure, type HttpClient, type OverpassProgress } from './osmClient';
+import { HttpStatusError, mirrorsFor, OsmClient, overpassFailure, type HttpClient, type OverpassProgress } from './osmClient';
 import { dedupePlaces, hasHouseNumber, normalizeQuery, placeFromNominatim, placeKey, radiusSteps, type PlaceTarget } from './places';
 
 // Un seul tour de serveurs par défaut ; le nouvel essai automatique a son propre test.
@@ -94,10 +94,23 @@ describe('recherche d’adresse (Nominatim)', () => {
   });
 });
 
+// Lieu inconnu : les serveurs mondiaux seulement.
+const OVERPASS_MIRRORS = mirrorsFor();
+
 describe('téléchargement (Overpass)', () => {
+  it('serveur d’OpenStreetMap France en tête pour un lieu en France, pas ailleurs', () => {
+    const france = mirrorsFor({ lat: 48.6298, lon: 2.3249 });
+    expect(france[0]).toBe('https://overpass.openstreetmap.fr/api/interpreter');
+    expect(france.slice(1)).toEqual(OVERPASS_MIRRORS);
+    expect(mirrorsFor({ lat: 40.758, lon: -73.986 })).toEqual(OVERPASS_MIRRORS);
+    expect(OVERPASS_MIRRORS[0]).toBe('https://overpass-api.de/api/interpreter');
+    expect(OVERPASS_MIRRORS.some((url) => url.includes('openstreetmap.fr'))).toBe(false);
+  });
+
+
   it('essaie les miroirs l’un après l’autre', async () => {
     const http = fakeHttp((url) =>
-      url.startsWith(OVERPASS_MIRRORS[0]) ? new HttpStatusError(504) : '{"elements":[]}',
+      url === OVERPASS_MIRRORS[0] ? new HttpStatusError(504) : '{"elements":[]}',
     );
     const text = await new OsmClient(http, places).overpass('[out:json];way;out geom;', new AbortController().signal);
     expect(text).toBe('{"elements":[]}');
@@ -111,7 +124,7 @@ describe('téléchargement (Overpass)', () => {
     const partial = '{"elements":[],"remark":"runtime error: Query timed out in \\"query\\" at line 1 after 26 seconds."}';
     expect(overpassFailure(partial)).toMatch(/timed out/);
     expect(overpassFailure('{"elements":[]}')).toBeNull();
-    const http = fakeHttp((url) => (url.startsWith(OVERPASS_MIRRORS[0]) ? partial : '{"elements":[1]}'));
+    const http = fakeHttp((url) => (url === OVERPASS_MIRRORS[0] ? partial : '{"elements":[1]}'));
     expect(await new OsmClient(http, places).overpass('q', new AbortController().signal)).toBe('{"elements":[1]}');
   });
 
@@ -144,7 +157,7 @@ describe('téléchargement (Overpass)', () => {
       getText: () => Promise.reject(new Error('inutile')),
       postForm: (url, _form, { signal }) =>
         new Promise((resolve, reject) => {
-          const i = OVERPASS_MIRRORS.indexOf(url as (typeof OVERPASS_MIRRORS)[number]);
+          const i = OVERPASS_MIRRORS.indexOf(url);
           const delay = delays[i];
           let settled = false;
           const timer =

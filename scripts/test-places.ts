@@ -109,9 +109,9 @@ async function tryAddress(n: number, query: string, config: GameConfig, http: Ca
     const { place, fallbackReason } = await generatePlaceMap(target!, config.places.defaultRadius, {
       config,
       signal,
-      overpass: async (q, s) => {
+      overpass: async (q, s, where) => {
         const t = performance.now();
-        const text = await client.overpass(q, s);
+        const text = await client.overpass(q, s, undefined, where);
         downloadMs += performance.now() - t;
         return text;
       },

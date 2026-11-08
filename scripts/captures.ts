@@ -70,7 +70,7 @@ async function cachedResponse(url: string): Promise<string | null> {
 
 /** Réponse Overpass gardée pour cette requête, quel que soit le serveur qui l'a donnée. */
 async function cachedOverpass(data: string): Promise<string | null> {
-  for (const mirror of OVERPASS_MIRRORS) {
+  for (const { url: mirror } of OVERPASS_MIRRORS) {
     const text = await cachedResponse(`${mirror}?data=${encodeURIComponent(data)}`);
     if (text) return text;
   }

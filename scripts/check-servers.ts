@@ -232,7 +232,8 @@ async function main(): Promise<void> {
         try {
           const res = await fetch(probe.url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            // Sans User-Agent, les serveurs refusent (406, 403, 429).
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': devices['Pixel 7']!.userAgent, Referer: site },
             body: probe.body,
             signal: AbortSignal.timeout(TIMEOUT_MS),
           });
