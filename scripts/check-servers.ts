@@ -19,6 +19,7 @@ function option(name: string, fallback: string): string {
 const site = option('site', 'https://vernieradrien-gif.github.io/MapsDefender/');
 const address = option('query', 'Villagexpo, Saint-Michel-sur-Orge');
 const origin = new URL(site).origin;
+const TIMEOUT_MS = 25_000;
 
 // Serveurs actuels du jeu et autres instances publiques connues.
 const SERVERS = [
@@ -61,7 +62,7 @@ async function direct(probe: Probe): Promise<Outcome> {
         ...(probe.body ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
       },
       body: probe.body,
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const text = await res.text();
     const acao = res.headers.get('access-control-allow-origin');
@@ -104,8 +105,22 @@ async function main(): Promise<void> {
     probes.push({ label, url: server, method: 'POST', body: new URLSearchParams({ data: query }).toString() });
   }
 
+  // Un serveur après l'autre pour un même hôte, les hôtes en parallèle.
+  const byHost = (list: Probe[]) => {
+    const groups = new Map<string, Probe[]>();
+    for (const p of list) groups.set(p.label, [...(groups.get(p.label) ?? []), p]);
+    return [...groups.values()];
+  };
+  const run = async (run1: (p: Probe) => Promise<Outcome>, where: string) => {
+    await Promise.all(
+      byHost(probes).map(async (group) => {
+        for (const probe of group) log(line(where, probe, await run1(probe)));
+      }),
+    );
+  };
+
   log('--- Hors navigateur (statut brut, en-tête CORS renvoyé) ---');
-  for (const probe of probes) log(line('node', probe, await direct(probe)));
+  await run(direct, 'node');
 
   log('--- Navigateur Pixel 7 sur le site publié (règles CORS réelles) ---');
   const browser = await chromium.launch();
@@ -116,24 +131,23 @@ async function main(): Promise<void> {
   });
   const response = await page.goto(site, { waitUntil: 'load' });
   log(`Page : HTTP ${response?.status() ?? '?'} · titre « ${await page.title()} »`);
-  for (const probe of probes) {
-    const outcome = await page.evaluate(async (p: Probe): Promise<Outcome> => {
+  const inPage = (probe: Probe) =>
+    page.evaluate(async ({ p, timeout }: { p: Probe; timeout: number }): Promise<Outcome> => {
       const start = Date.now();
       try {
         const res = await fetch(p.url, {
           method: p.method,
           body: p.body,
           headers: p.body ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {},
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(timeout),
         });
         const text = await res.text();
         return { ok: res.ok, status: res.status, ms: Date.now() - start, bytes: text.length, detail: res.ok ? '' : text.replace(/\s+/g, ' ').slice(0, 160) };
       } catch (error) {
         return { ok: false, status: 0, ms: Date.now() - start, bytes: 0, detail: error instanceof Error ? `${error.name}: ${error.message}` : String(error) };
       }
-    }, probe);
-    log(line('navigateur', probe, outcome));
-  }
+    }, { p: probe, timeout: TIMEOUT_MS });
+  await run(inPage, 'navigateur');
   if (consoleErrors.length) log(`Erreurs de la console : ${consoleErrors.join(' ‖ ')}`);
   await browser.close();
 
