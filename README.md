@@ -20,11 +20,11 @@ Le site est publié automatiquement par GitHub Actions à chaque modification de
 
 ### Application Android (APK de test)
 
-L'APK est construit par GitHub Actions (workflow « APK Android ») à chaque pull request et à chaque modification de `main` :
+👉 **https://github.com/vernieradrien-gif/MapsDefender/releases/download/apk/streetdefense.apk**
 
-1. onglet **Actions** du dépôt → workflow **APK Android** → dernière exécution réussie ;
-2. en bas de la page, artefact **streetdefense-debug-apk** (il faut être connecté à GitHub) : un zip qui contient `app-debug.apk` ;
-3. sur le téléphone, ouvrir `app-debug.apk` et autoriser l'installation depuis cette source.
+Lien direct, sans compte GitHub : sur le téléphone, toucher le lien, ouvrir `streetdefense.apk` et autoriser l'installation depuis cette source. Le lien donne toujours le dernier APK construit par GitHub Actions (workflow « APK Android », à chaque pull request et à chaque modification de `main`) ; la page [Releases](https://github.com/vernieradrien-gif/MapsDefender/releases/tag/apk) indique la branche et le commit. Un nouvel APK s'installe **par-dessus** le précédent : cartes et progression sont gardées.
+
+L'APK reste aussi dans l'onglet **Actions** → workflow **APK Android** → artefact **streetdefense-debug-apk** (zip, connexion à GitHub nécessaire).
 
 L'appli affiche les vraies publicités AdMob **de test** de Google (bannière « Test Ad », vidéo récompensée, interstitiel) et, dans l'Union européenne, le formulaire de consentement au premier lancement.
 

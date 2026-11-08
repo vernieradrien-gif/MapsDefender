@@ -1,8 +1,10 @@
 # Construit l'APK Android de test (Capacitor, publicités de TEST uniquement).
-# - Sur une pull request et sur main : l'APK est disponible dans l'onglet
-#   Actions, rubrique « Artifacts » de l'exécution (streetdefense-debug-apk).
-# - APK « debug » : signé avec la clé de débogage, installable pour tester,
-#   pas destiné au Play Store (la signature de publication viendra au jalon 6).
+# - Sur une pull request et sur main : l'APK est publié en lien direct (release
+#   « apk », toujours le dernier construit) :
+#   https://github.com/vernieradrien-gif/MapsDefender/releases/download/apk/streetdefense.apk
+#   Il reste aussi dans l'onglet Actions, rubrique « Artifacts » de l'exécution.
+# - APK « debug » : signé avec la clé de débogage fixe du dépôt (mises à jour
+#   sans désinstaller), pas destiné au Play Store (signature de publication au jalon 6).
 name: APK Android
 
 on:
@@ -12,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # publication de la release « apk »
 
 jobs:
   apk:
@@ -49,3 +51,18 @@ jobs:
           name: streetdefense-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publication en lien direct (release « apk »)
+        # Pas pour une pull request venue d'un fork (jeton en lecture seule).
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE: ${{ github.head_ref || github.ref_name }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk streetdefense.apk
+          gh release delete apk --cleanup-tag --yes || true
+          gh release create apk streetdefense.apk --prerelease --target "$SHA" \
+            --title "StreetDefense — APK de test" \
+            --notes "Dernier APK de test construit (branche $SOURCE, commit ${SHA:0:7}). Publicités de test uniquement. Sur le téléphone : ouvrir streetdefense.apk et autoriser l'installation depuis cette source."
