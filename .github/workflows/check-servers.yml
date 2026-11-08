@@ -1,5 +1,6 @@
-# Diagnostic : le site publié peut-il joindre Nominatim et les serveurs Overpass
-# depuis un navigateur de téléphone ? Résultat dans le résumé de l'exécution.
+# Diagnostic : le jeu peut-il créer une carte depuis un navigateur de téléphone ?
+# Parcours réel du jeu construit (servi à l'adresse du site publié), puis
+# Nominatim et chaque serveur Overpass. Résultat dans le résumé de l'exécution.
 name: Diagnostic serveurs OSM
 
 on:
@@ -14,6 +15,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -26,5 +28,10 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
-      - name: Diagnostic
-        run: npx tsx scripts/check-servers.ts
+      - name: Build du jeu (comme pour GitHub Pages)
+        run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+
+      - name: Diagnostic (parcours du jeu, puis chaque serveur)
+        run: npx tsx scripts/check-servers.ts --local dist

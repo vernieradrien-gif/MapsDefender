@@ -4,9 +4,15 @@
 // avec les mêmes règles CORS que sur le téléphone. Les mêmes appels sont
 // refaits hors navigateur pour voir le statut et les en-têtes bruts.
 //
-//   npx tsx scripts/check-servers.ts [--site https://…/MapsDefender/] [--query "adresse"]
+// Avec --local dist : parcours réel du jeu construit localement (servi à
+// l'adresse du site publié, donc mêmes règles CORS) : Choisir un lieu,
+// Chercher, premier résultat, jusqu'à l'aperçu de la carte.
+//
+//   npx tsx scripts/check-servers.ts [--site https://…/MapsDefender/] [--query "adresse"] [--local dist] [--no-probes]
 
-import { chromium, devices } from 'playwright';
+import { readFile } from 'node:fs/promises';
+import { extname, join } from 'node:path';
+import { chromium, devices, type Page } from 'playwright';
 import { loadConfig } from '../src/config';
 import { NOMINATIM_URL } from '../src/geo/osmClient';
 import { placeQuery, type OsmPlace } from '../src/geo/osmMap';
@@ -19,6 +25,10 @@ function option(name: string, fallback: string): string {
 const site = option('site', 'https://vernieradrien-gif.github.io/MapsDefender/');
 const address = option('query', 'Villagexpo, Saint-Michel-sur-Orge');
 const origin = new URL(site).origin;
+const localDir = process.argv.includes('--local') ? option('local', 'dist') : null;
+const probesWanted = !process.argv.includes('--no-probes');
+// Navigateur déjà installé ailleurs (CHROMIUM_PATH), sinon celui de Playwright.
+const launchOptions = process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {};
 const TIMEOUT_MS = 60_000;
 
 // Serveurs actuels du jeu et autres instances publiques connues.
@@ -83,6 +93,84 @@ function line(where: string, probe: Probe, o: Outcome): string {
   return `${verdict} | ${where} | ${probe.method} ${probe.label} | HTTP ${o.status} | ${o.ms} ms | ${o.bytes} o | ${o.detail}`;
 }
 
+const MIME: Record<string, string> = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.json': 'application/json',
+};
+
+/** Le build local répond à la place du site publié (même origine, mêmes règles CORS). */
+async function serveLocal(page: Page, dir: string): Promise<void> {
+  const base = new URL(site);
+  await page.context().route(
+    (url) => url.origin === base.origin && url.pathname.startsWith(base.pathname),
+    async (route) => {
+      const rel = new URL(route.request().url()).pathname.slice(base.pathname.length) || 'index.html';
+      try {
+        const body = await readFile(join(dir, rel));
+        await route.fulfill({ status: 200, body, contentType: MIME[extname(rel)] ?? 'application/octet-stream' });
+      } catch {
+        await route.fulfill({ status: 404, body: '' });
+      }
+    },
+  );
+}
+
+/** Parcours réel : Choisir un lieu → Chercher → premier résultat → aperçu (ou erreur). */
+async function playFlow(dir: string, log: (text: string) => void): Promise<void> {
+  log(`--- Parcours du jeu (build local ${dir}, servi comme ${site}) : « ${address} » ---`);
+  const browser = await chromium.launch(launchOptions);
+  const page = await browser.newPage({ ...devices['Pixel 7'] });
+  const overpassCalls: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/api/interpreter')) overpassCalls.push(`${r.method()} ${new URL(r.url()).host}`);
+  });
+  page.on('requestfailed', (r) => {
+    if (r.url().includes('/api/interpreter')) log(`  requête interrompue : ${new URL(r.url()).host} (${r.failure()?.errorText ?? '?'})`);
+  });
+  await serveLocal(page, dir);
+  await page.goto(site);
+  await page.getByRole('button', { name: 'Choisir un lieu' }).click();
+  await page.getByRole('searchbox', { name: 'Adresse, rue ou lieu' }).fill(address);
+  const start = Date.now();
+  await page.getByRole('button', { name: 'Chercher' }).click();
+  await page.locator('.place-result').first().waitFor({ timeout: 30_000 });
+  log(`  recherche : ${Date.now() - start} ms · « ${short(await page.locator('.place-result').first().innerText())} »`);
+  await page.locator('.place-result').first().click();
+  const t0 = Date.now();
+  let last = '';
+  for (;;) {
+    const state = await page.evaluate(() => ({
+      preview: !!document.querySelector('.map-preview'),
+      error: document.querySelector('.loading-error')?.textContent ?? null,
+      step: [...document.querySelectorAll('.loading-step.active .step-label')].map((e) => e.textContent).join(' / '),
+    }));
+    if (state.step && state.step !== last) {
+      last = state.step;
+      log(`  ${((Date.now() - t0) / 1000).toFixed(1)} s : ${state.step}`);
+    }
+    if (state.preview) {
+      const stats = await page.locator('.preview-stats').innerText();
+      log(`OK  | carte créée en ${((Date.now() - t0) / 1000).toFixed(1)} s · ${short(stats)}`);
+      break;
+    }
+    if (state.error) {
+      log(`ÉCHEC | erreur après ${((Date.now() - t0) / 1000).toFixed(1)} s : ${short(state.error)}`);
+      break;
+    }
+    if (Date.now() - t0 > 360_000) {
+      log('ÉCHEC | toujours en chargement après 6 min');
+      break;
+    }
+    await page.waitForTimeout(500);
+  }
+  log(`  requêtes Overpass : ${overpassCalls.join(', ') || 'aucune'}`);
+  await browser.close();
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
   const lines: string[] = [];
@@ -90,6 +178,9 @@ async function main(): Promise<void> {
     console.log(text);
     lines.push(text);
   };
+
+  if (localDir) await playFlow(localDir, log);
+  if (!probesWanted) return writeSummary(lines);
 
   const search = `${NOMINATIM_URL}/search?${new URLSearchParams({ q: address, format: 'jsonv2', limit: '1', addressdetails: '1', 'accept-language': 'fr' })}`;
   const found = (await (await fetch(search, { headers: { 'User-Agent': 'StreetDefense diagnostic' } })).json()) as { lat: string; lon: string }[];
@@ -123,7 +214,7 @@ async function main(): Promise<void> {
   await run(direct, 'node');
 
   log('--- Navigateur Pixel 7 sur le site publié (règles CORS réelles) ---');
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(launchOptions);
   const page = await browser.newPage({ ...devices['Pixel 7'] });
   const consoleErrors: string[] = [];
   page.on('console', (msg) => {
@@ -151,10 +242,14 @@ async function main(): Promise<void> {
   if (consoleErrors.length) log(`Erreurs de la console : ${consoleErrors.join(' ‖ ')}`);
   await browser.close();
 
-  if (process.env.GITHUB_STEP_SUMMARY) {
-    const { appendFile } = await import('node:fs/promises');
-    await appendFile(process.env.GITHUB_STEP_SUMMARY, `\`\`\`\n${lines.join('\n')}\n\`\`\`\n`);
-  }
+  await writeSummary(lines);
+}
+
+/** Résumé de l'exécution GitHub Actions. */
+async function writeSummary(lines: string[]): Promise<void> {
+  if (!process.env.GITHUB_STEP_SUMMARY) return;
+  const { appendFile } = await import('node:fs/promises');
+  await appendFile(process.env.GITHUB_STEP_SUMMARY, `\`\`\`\n${lines.join('\n')}\n\`\`\`\n`);
 }
 
 main().catch((error: unknown) => {
