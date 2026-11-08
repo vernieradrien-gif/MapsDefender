@@ -27,10 +27,20 @@ export class HttpStatusError extends Error {
   }
 }
 
+export interface HttpOptions {
+  signal: AbortSignal;
+  timeoutMs: number;
+}
+
 /** Accès au réseau, fourni par la plateforme (navigateur, Android, Node). */
 export interface HttpClient {
   /** Corps de la réponse en texte ; rejette sur une erreur réseau, un délai dépassé ou un statut en erreur. */
-  getText(url: string, options: { signal: AbortSignal; timeoutMs: number }): Promise<string>;
+  getText(url: string, options: HttpOptions): Promise<string>;
+  /**
+   * POST d'un formulaire (application/x-www-form-urlencoded) : requête « simple »
+   * pour le navigateur (pas de pré-vérification CORS), réponse en texte.
+   */
+  postForm(url: string, form: Record<string, string>, options: HttpOptions): Promise<string>;
 }
 
 export type OsmErrorCode = 'aborted' | 'network' | 'notFound' | 'overpass';
@@ -129,7 +139,8 @@ export class OsmClient {
       for (const [attempt, mirror] of OVERPASS_MIRRORS.entries()) {
         onProgress?.({ kind: 'attempt', attempt, round });
         try {
-          const text = await this.http.getText(`${mirror}?data=${encodeURIComponent(query)}`, { signal, timeoutMs: this.timeoutMs });
+          // POST (méthode recommandée par Overpass) : la requête voyage dans le corps.
+          const text = await this.http.postForm(mirror, { data: query }, { signal, timeoutMs: this.timeoutMs });
           const failure = overpassFailure(text);
           if (failure) throw new Error(failure);
           return text;

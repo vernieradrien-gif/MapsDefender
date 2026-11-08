@@ -6,20 +6,27 @@ import { dedupePlaces, hasHouseNumber, normalizeQuery, placeFromNominatim, place
 // Un seul tour de serveurs par défaut ; le nouvel essai automatique a son propre test.
 const places = testConfig((c) => Object.assign(c.places, { nominatimInterval: 0.05, overpassRounds: 1 })).places;
 
-function fakeHttp(answer: (url: string) => string | Error): HttpClient & { urls: string[]; times: number[] } {
+type FakeHttp = HttpClient & { urls: string[]; times: number[]; forms: (Record<string, string> | null)[] };
+
+function fakeHttp(answer: (url: string) => string | Error): FakeHttp {
   const urls: string[] = [];
   const times: number[] = [];
+  const forms: (Record<string, string> | null)[] = [];
+  const respond = async (url: string, form: Record<string, string> | null, signal: AbortSignal) => {
+    urls.push(url);
+    times.push(Date.now());
+    forms.push(form);
+    if (signal.aborted) throw new Error('aborted');
+    const a = answer(url);
+    if (a instanceof Error) throw a;
+    return a;
+  };
   return {
     urls,
     times,
-    async getText(url, { signal }) {
-      urls.push(url);
-      times.push(Date.now());
-      if (signal.aborted) throw new Error('aborted');
-      const a = answer(url);
-      if (a instanceof Error) throw a;
-      return a;
-    },
+    forms,
+    getText: (url, { signal }) => respond(url, null, signal),
+    postForm: (url, form, { signal }) => respond(url, form, signal),
   };
 }
 
@@ -95,8 +102,9 @@ describe('téléchargement (Overpass)', () => {
     const text = await new OsmClient(http, places).overpass('[out:json];way;out geom;', new AbortController().signal);
     expect(text).toBe('{"elements":[]}');
     expect(http.urls).toHaveLength(2);
-    expect(http.urls[1]!.startsWith(OVERPASS_MIRRORS[1])).toBe(true);
-    expect(new URL(http.urls[1]!).searchParams.get('data')).toBe('[out:json];way;out geom;');
+    expect(http.urls[1]).toBe(OVERPASS_MIRRORS[1]);
+    // POST : la requête est dans le corps (formulaire), pas dans l'adresse.
+    expect(http.forms[1]).toEqual({ data: '[out:json];way;out geom;' });
   });
 
   it('une réponse incomplète (délai dépassé côté serveur) compte comme un échec', async () => {

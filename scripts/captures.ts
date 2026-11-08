@@ -69,8 +69,7 @@ async function cachedResponse(url: string): Promise<string | null> {
 }
 
 /** Réponse Overpass gardée pour cette requête, quel que soit le serveur qui l'a donnée. */
-async function cachedOverpass(url: string): Promise<string | null> {
-  const data = new URL(url).searchParams.get('data') ?? '';
+async function cachedOverpass(data: string): Promise<string | null> {
   for (const mirror of OVERPASS_MIRRORS) {
     const text = await cachedResponse(`${mirror}?data=${encodeURIComponent(data)}`);
     if (text) return text;
@@ -97,8 +96,7 @@ async function captureQuery(): Promise<string> {
     radius,
     precise: target.precise,
   };
-  const overpass = `${OVERPASS_MIRRORS[0]}?data=${encodeURIComponent(placeQuery(place, config))}`;
-  return (await cachedOverpass(overpass)) ? query : 'Villagexpo, Saint-Michel-sur-Orge';
+  return (await cachedOverpass(placeQuery(place, config))) ? query : 'Villagexpo, Saint-Michel-sur-Orge';
 }
 
 /**
@@ -111,7 +109,9 @@ async function replayOsm(page: Page): Promise<void> {
     const url = route.request().url();
     const overpass = url.includes('/api/interpreter');
     const fallback = join(root, 'scripts', '.cache', overpass ? 'villagexpo.overpass.json' : 'villagexpo.nominatim.json');
-    let body = overpass ? await cachedOverpass(url) : await cachedResponse(url);
+    // Overpass : requête dans le corps du POST (formulaire).
+    const data = new URLSearchParams(route.request().postData() ?? '').get('data') ?? '';
+    let body = overpass ? await cachedOverpass(data) : await cachedResponse(url);
     if (body === null) {
       // L'import de Villagexpo garde un seul résultat Nominatim ; l'appli attend une liste.
       const saved: unknown = JSON.parse(await readFile(fallback, 'utf8'));
