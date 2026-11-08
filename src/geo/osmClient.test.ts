@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { testConfig } from '../game/__tests__/helpers';
-import { HttpStatusError, mirrorsFor, OsmClient, overpassFailure, type HttpClient, type OverpassProgress } from './osmClient';
+import { HttpStatusError, OsmClient, OVERPASS_MIRRORS, overpassFailure, type HttpClient, type OverpassProgress } from './osmClient';
 import { dedupePlaces, hasHouseNumber, normalizeQuery, placeFromNominatim, placeKey, radiusSteps, type PlaceTarget } from './places';
 
 // Un seul tour de serveurs par défaut ; le nouvel essai automatique a son propre test.
@@ -94,19 +94,11 @@ describe('recherche d’adresse (Nominatim)', () => {
   });
 });
 
-// Lieu inconnu : les serveurs mondiaux seulement.
-const OVERPASS_MIRRORS = mirrorsFor();
-
 describe('téléchargement (Overpass)', () => {
-  it('serveur d’OpenStreetMap France en tête pour un lieu en France, pas ailleurs', () => {
-    const france = mirrorsFor({ lat: 48.6298, lon: 2.3249 });
-    expect(france[0]).toBe('https://overpass.openstreetmap.fr/api/interpreter');
-    expect(france.slice(1)).toEqual(OVERPASS_MIRRORS);
-    expect(mirrorsFor({ lat: 40.758, lon: -73.986 })).toEqual(OVERPASS_MIRRORS);
-    expect(OVERPASS_MIRRORS[0]).toBe('https://overpass-api.de/api/interpreter');
-    expect(OVERPASS_MIRRORS.some((url) => url.includes('openstreetmap.fr'))).toBe(false);
+  it('OpenStreetMap France en tête (le plus rapide au diagnostic), le serveur principal ensuite', () => {
+    expect(OVERPASS_MIRRORS[0]).toBe('https://overpass.openstreetmap.fr/api/interpreter');
+    expect(OVERPASS_MIRRORS[1]).toBe('https://overpass-api.de/api/interpreter');
   });
-
 
   it('essaie les miroirs l’un après l’autre', async () => {
     const http = fakeHttp((url) =>
@@ -146,8 +138,9 @@ describe('téléchargement (Overpass)', () => {
     );
     expect(text).toBe('{"elements":[]}');
     expect(http.urls).toHaveLength(OVERPASS_MIRRORS.length + 1);
-    expect(progress).toEqual(['0:0', '0:1', '0:2', 'pause 0.02', '1:0']);
-    expect(http.times[3]! - http.times[2]!).toBeGreaterThanOrEqual(15);
+    const n = OVERPASS_MIRRORS.length;
+    expect(progress).toEqual([...OVERPASS_MIRRORS.map((_, i) => `0:${i}`), 'pause 0.02', '1:0']);
+    expect(http.times[n]! - http.times[n - 1]!).toBeGreaterThanOrEqual(15);
   });
 
   /** Serveurs simulés : réponse après un délai (ms), ou jamais (null) ; note les requêtes annulées. */
@@ -157,7 +150,7 @@ describe('téléchargement (Overpass)', () => {
       getText: () => Promise.reject(new Error('inutile')),
       postForm: (url, _form, { signal }) =>
         new Promise((resolve, reject) => {
-          const i = OVERPASS_MIRRORS.indexOf(url);
+          const i = OVERPASS_MIRRORS.indexOf(url as (typeof OVERPASS_MIRRORS)[number]);
           const delay = delays[i];
           let settled = false;
           const timer =

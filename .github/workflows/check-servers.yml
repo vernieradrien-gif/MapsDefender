@@ -3,10 +3,8 @@
 # Nominatim et chaque serveur Overpass. Résultat dans le résumé de l'exécution.
 name: Diagnostic serveurs OSM
 
+# Lancement à la demande : onglet Actions → « Diagnostic serveurs OSM » → Run workflow.
 on:
-  push:
-    branches: [ccr-07cc5199-4c4ddk]
-    paths: [scripts/check-servers.ts, .github/workflows/check-servers.yml]
   workflow_dispatch:
 
 permissions:

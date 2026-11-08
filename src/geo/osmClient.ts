@@ -8,31 +8,17 @@ import type { LatLon } from './projection';
 
 export const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
 
-export interface OverpassMirror {
-  url: string;
-  /** Serveur régional : utilisé seulement pour un lieu dans cette emprise (degrés). */
-  area?: { south: number; west: number; north: number; east: number };
-}
-
 // Diagnostic du 8/11/2026 (navigateur de téléphone, scripts/check-servers.ts) :
-// OpenStreetMap France répond en 4 à 5 s, le serveur principal en 25 à 50 s
-// (ou « at capacity »), VK Maps en 15 à 20 s ou 504, private.coffee jamais.
-// Le serveur d'OpenStreetMap France n'est sollicité que pour la France
-// (métropole et Corse), là où il a sûrement les données.
-export const OVERPASS_MIRRORS: readonly OverpassMirror[] = [
-  { url: 'https://overpass.openstreetmap.fr/api/interpreter', area: { south: 41.3, west: -5.2, north: 51.1, east: 9.6 } },
-  { url: 'https://overpass-api.de/api/interpreter' },
-  { url: 'https://maps.mail.ru/osm/tools/overpass/api/interpreter' },
-  { url: 'https://overpass.private.coffee/api/interpreter' },
-];
-
-/** Serveurs à interroger pour un lieu, dans l'ordre (tous si le lieu n'est pas connu). */
-export function mirrorsFor(where?: LatLon): string[] {
-  return OVERPASS_MIRRORS.filter(
-    ({ area }) =>
-      !area || (where !== undefined && where.lat >= area.south && where.lat <= area.north && where.lon >= area.west && where.lon <= area.east),
-  ).map((m) => m.url);
-}
+// OpenStreetMap France répond en 1 à 8 s (monde entier : mêmes rues que le
+// serveur principal à Paris, Bruxelles, New York, Tokyo), le serveur principal
+// en 25 à 50 s (ou « at capacity »), VK Maps en 15 à 20 s ou 504,
+// private.coffee jamais (gardé en dernier recours).
+export const OVERPASS_MIRRORS = [
+  'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+] as const;
 
 /** Progression d'un téléchargement Overpass, pour l'écran de chargement. */
 export type OverpassProgress = { kind: 'attempt'; attempt: number; round: number } | { kind: 'pause'; seconds: number };
@@ -146,20 +132,14 @@ export class OsmClient {
    * Données Overpass (texte JSON). Un tour : les serveurs dans l'ordre, en relais ;
    * s'ils échouent tous, pause (règle d'usage : 30 s) puis nouveau tour.
    */
-  async overpass(
-    query: string,
-    signal: AbortSignal,
-    onProgress?: (progress: OverpassProgress) => void,
-    where?: LatLon,
-  ): Promise<string> {
-    const mirrors = mirrorsFor(where);
+  async overpass(query: string, signal: AbortSignal, onProgress?: (progress: OverpassProgress) => void): Promise<string> {
     const errors: string[] = [];
     for (let round = 0; round < this.config.overpassRounds; round++) {
       if (round > 0) {
         onProgress?.({ kind: 'pause', seconds: this.config.overpassRetryPause });
         await wait(this.config.overpassRetryPause * 1000, signal);
       }
-      const text = await this.overpassRound(query, mirrors, round, signal, errors, onProgress);
+      const text = await this.overpassRound(query, round, signal, errors, onProgress);
       if (text !== null) return text;
     }
     throw new OsmError('overpass', `Overpass : aucun serveur n'a répondu (${errors.join(' ; ')})`);
@@ -174,7 +154,6 @@ export class OsmClient {
    */
   private overpassRound(
     query: string,
-    mirrors: string[],
     round: number,
     signal: AbortSignal,
     errors: string[],
@@ -198,12 +177,12 @@ export class OsmClient {
       const launch = () => {
         clearTimeout(hedge);
         if (done) return;
-        if (next >= mirrors.length) {
+        if (next >= OVERPASS_MIRRORS.length) {
           if (running === 0) finish(() => resolve(null));
           return;
         }
         const attempt = next++;
-        const mirror = mirrors[attempt]!;
+        const mirror = OVERPASS_MIRRORS[attempt]!;
         running++;
         onProgress?.({ kind: 'attempt', attempt, round });
         hedge = setTimeout(launch, this.config.overpassHedgeDelay * 1000);

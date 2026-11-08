@@ -717,7 +717,7 @@ export class App {
         config: this.config,
         signal,
         build: this.mapWorker().build,
-        overpass: (query, s, where) => this.osm.overpass(query, s, (p) => this.showDownload(p), where),
+        overpass: (query, s) => this.osm.overpass(query, s, (p) => this.showDownload(p)),
         onProgress: (p) => {
           if (p.step === 'download') {
             this.loading.setStep('download', 'active', p.enlarged ? t('loading.enlarge', { radius: p.radius }) : t('loading.download'));
