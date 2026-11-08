@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { testConfig } from '../game/__tests__/helpers';
-import { HttpStatusError, OsmClient, OVERPASS_MIRRORS, overpassFailure, type HttpClient } from './osmClient';
+import { HttpStatusError, OsmClient, OVERPASS_MIRRORS, overpassFailure, type HttpClient, type OverpassProgress } from './osmClient';
 import { dedupePlaces, hasHouseNumber, normalizeQuery, placeFromNominatim, placeKey, radiusSteps, type PlaceTarget } from './places';
 
 // Un seul tour de serveurs par défaut ; le nouvel essai automatique a son propre test.
@@ -135,6 +135,78 @@ describe('téléchargement (Overpass)', () => {
     expect(http.urls).toHaveLength(OVERPASS_MIRRORS.length + 1);
     expect(progress).toEqual(['0:0', '0:1', '0:2', 'pause 0.02', '1:0']);
     expect(http.times[3]! - http.times[2]!).toBeGreaterThanOrEqual(15);
+  });
+
+  /** Serveurs simulés : réponse après un délai (ms), ou jamais (null) ; note les requêtes annulées. */
+  function timedHttp(delays: (number | null)[], body = (i: number) => `{"elements":[${i}]}`) {
+    const aborted: number[] = [];
+    const http: HttpClient = {
+      getText: () => Promise.reject(new Error('inutile')),
+      postForm: (url, _form, { signal }) =>
+        new Promise((resolve, reject) => {
+          const i = OVERPASS_MIRRORS.indexOf(url as (typeof OVERPASS_MIRRORS)[number]);
+          const delay = delays[i];
+          let settled = false;
+          const timer =
+            delay == null
+              ? undefined
+              : setTimeout(() => {
+                  settled = true;
+                  resolve(body(i));
+                }, delay);
+          signal.addEventListener('abort', () => {
+            if (settled) return;
+            clearTimeout(timer);
+            aborted.push(i);
+            reject(new Error('aborted'));
+          });
+        }),
+    };
+    return { http, aborted };
+  }
+  const relay = { ...places, overpassHedgeDelay: 0.05 };
+  const attempts = (list: string[]) => (p: OverpassProgress) => list.push(p.kind === 'attempt' ? `${p.round}:${p.attempt}` : p.kind);
+
+  it('relais : un serveur muet n’empêche pas le suivant de répondre', async () => {
+    const { http, aborted } = timedHttp([null, 5, null]);
+    const progress: string[] = [];
+    const start = Date.now();
+    const text = await new OsmClient(http, relay).overpass('q', new AbortController().signal, attempts(progress));
+    expect(text).toBe('{"elements":[1]}');
+    expect(Date.now() - start).toBeGreaterThanOrEqual(45);
+    expect(progress).toEqual(['0:0', '0:1']);
+    // La requête restée sans réponse est annulée.
+    expect(aborted).toEqual([0]);
+  });
+
+  it('relais : le premier serveur, lent mais pas muet, peut encore gagner', async () => {
+    // Réponse à 75 ms : le relais est parti à 50 ms, le troisième serveur partirait à 100 ms.
+    const { http, aborted } = timedHttp([75, null, null]);
+    const progress: string[] = [];
+    const text = await new OsmClient(http, relay).overpass('q', new AbortController().signal, attempts(progress));
+    expect(text).toBe('{"elements":[0]}');
+    expect(progress).toEqual(['0:0', '0:1']);
+    expect(aborted).toEqual([1]);
+  });
+
+  it('relais : annulé par le joueur, toutes les requêtes en cours sont arrêtées', async () => {
+    const { http, aborted } = timedHttp([null, null, null]);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 75);
+    await expect(new OsmClient(http, relay).overpass('q', controller.signal)).rejects.toMatchObject({ code: 'aborted' });
+    expect(aborted.sort()).toEqual([0, 1]);
+  });
+
+  it('relais : tous muets jusqu’au délai d’attente, erreur Overpass', async () => {
+    const quick = { ...relay, requestTimeout: 0.08 };
+    const http: HttpClient = {
+      getText: () => Promise.reject(new Error('inutile')),
+      postForm: (_url, _form, { timeoutMs }) => new Promise((_, reject) => setTimeout(() => reject(new Error('délai dépassé')), timeoutMs)),
+    };
+    await expect(new OsmClient(http, quick).overpass('q', new AbortController().signal)).rejects.toMatchObject({
+      code: 'overpass',
+      message: expect.stringMatching(/délai dépassé/),
+    });
   });
 
   it('annulé : on n’essaie pas les autres miroirs', async () => {

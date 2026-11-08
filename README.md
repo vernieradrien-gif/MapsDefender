@@ -64,7 +64,10 @@ npm run import-map # réimporte Villagexpo depuis OpenStreetMap (--offline : rej
 npm run simulate   # parties automatiques sur 20 quartiers types + Villagexpo (équilibrage)
 npm run captures   # captures Playwright (Pixel 7) dans docs/captures/ et mesure de fluidité
 npm run test-places # essai sur 20 adresses variées (réseau) → docs/essai-adresses.md ; --offline rejoue
+npx tsx scripts/check-servers.ts # diagnostic : Nominatim et serveurs Overpass vus d'un navigateur de téléphone sur le site publié
 ```
+
+Le diagnostic des serveurs tourne aussi sur GitHub : onglet **Actions** → workflow **Diagnostic serveurs OSM** → **Run workflow** ; résultat dans le résumé de l'exécution.
 
 `npm run captures` demande une fois `npx playwright install chromium`.
 
@@ -102,6 +105,14 @@ Le jeu reçoit une **carte** (`GameMap` dans `src/game/types.ts`) : itinéraires
 ## Décisions prises
 
 Choix faits sans validation explicite, à revoir si besoin.
+
+### Serveurs de cartes et APK (novembre 2026)
+
+- **Panne constatée** (8/11/2026, retour du joueur : « les serveurs pour la création des cartes ne marchent pas ») : diagnostic depuis un vrai navigateur de téléphone (Chromium, profil Pixel 7) sur le site publié (`scripts/check-servers.ts`, workflow « Diagnostic serveurs OSM »). Nominatim répond ; le serveur Overpass principal (overpass-api.de) est saturé (pas de réponse en 25 s, ou « at capacity, request queue full ») ; private.coffee ne répond pas non plus ; VK Maps (maps.mail.ru) répond, CORS compris, mais en 18 à 21 s. L'appli attendait 45 s chaque serveur l'un après l'autre : jusqu'à 5 minutes avant le message d'erreur, et une réponse de VK Maps proche de la limite de 20 s de calcul.
+- **Serveurs en relais** : si le serveur interrogé n'a pas répondu après 10 s (`places.overpassHedgeDelay`), le suivant est aussi interrogé, sans abandonner le premier ; un serveur en erreur passe la main tout de suite ; la première réponse complète gagne et les autres requêtes sont annulées. Au plus une requête par serveur à la fois. Temps de calcul demandé à Overpass : 40 s (au lieu de 20) ; attente d'une réponse : 60 s (au lieu de 45). Toujours deux tours, avec 30 s de pause entre les deux.
+- **POST** : la requête Overpass part dans le corps d'un formulaire (méthode recommandée par Overpass) au lieu de l'adresse ; pour le navigateur, cela reste une requête « simple » (pas de pré-vérification CORS).
+- **APK en lien direct** : le workflow « APK Android » publie l'APK dans la release `apk` (pré-version), remplacée à chaque construction (`main` ou pull request) : https://github.com/vernieradrien-gif/MapsDefender/releases/download/apk/streetdefense.apk. L'artefact zip reste disponible dans l'onglet Actions.
+- **Clé de débogage fixe** (`android/app/debug.keystore`, mot de passe public `android`, versionnée) : sans elle, chaque machine de la CI signait avec une clé différente et Android refusait d'installer un APK par-dessus le précédent (il fallait désinstaller et perdre cartes et progression). Le premier APK signé avec cette clé demande encore de désinstaller l'ancien ; ensuite, les mises à jour s'installent directement. Ce n'est pas la clé de publication (jalon 6).
 
 ### Après le jalon 4 : retours du joueur (révision)
 

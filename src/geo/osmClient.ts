@@ -126,8 +126,8 @@ export class OsmClient {
   }
 
   /**
-   * Données Overpass (texte JSON) : les serveurs l'un après l'autre ; s'ils sont
-   * tous saturés, pause (règle d'usage : 30 s) puis nouveau tour.
+   * Données Overpass (texte JSON). Un tour : les serveurs dans l'ordre, en relais ;
+   * s'ils échouent tous, pause (règle d'usage : 30 s) puis nouveau tour.
    */
   async overpass(query: string, signal: AbortSignal, onProgress?: (progress: OverpassProgress) => void): Promise<string> {
     const errors: string[] = [];
@@ -136,21 +136,72 @@ export class OsmClient {
         onProgress?.({ kind: 'pause', seconds: this.config.overpassRetryPause });
         await wait(this.config.overpassRetryPause * 1000, signal);
       }
-      for (const [attempt, mirror] of OVERPASS_MIRRORS.entries()) {
-        onProgress?.({ kind: 'attempt', attempt, round });
-        try {
-          // POST (méthode recommandée par Overpass) : la requête voyage dans le corps.
-          const text = await this.http.postForm(mirror, { data: query }, { signal, timeoutMs: this.timeoutMs });
-          const failure = overpassFailure(text);
-          if (failure) throw new Error(failure);
-          return text;
-        } catch (error) {
-          if (signal.aborted) throw abortError();
-          errors.push(`${new URL(mirror).host} : ${describe(error)}`);
-        }
-      }
+      const text = await this.overpassRound(query, round, signal, errors, onProgress);
+      if (text !== null) return text;
     }
     throw new OsmError('overpass', `Overpass : aucun serveur n'a répondu (${errors.join(' ; ')})`);
+  }
+
+  /**
+   * Un tour de serveurs en relais : le suivant est interrogé dès que le serveur en
+   * cours échoue, ou s'il n'a pas répondu après overpassHedgeDelay (un serveur
+   * saturé peut se taire jusqu'au délai d'attente) ; les requêtes déjà parties
+   * continuent. La première réponse complète gagne, les autres sont annulées.
+   * Null si tous ont échoué.
+   */
+  private overpassRound(
+    query: string,
+    round: number,
+    signal: AbortSignal,
+    errors: string[],
+    onProgress?: (progress: OverpassProgress) => void,
+  ): Promise<string | null> {
+    return new Promise((resolve, reject) => {
+      const requests = new AbortController();
+      let next = 0;
+      let running = 0;
+      let done = false;
+      let hedge: ReturnType<typeof setTimeout> | undefined;
+      const finish = (settle: () => void) => {
+        if (done) return;
+        done = true;
+        clearTimeout(hedge);
+        signal.removeEventListener('abort', onAbort);
+        requests.abort();
+        settle();
+      };
+      const onAbort = () => finish(() => reject(abortError()));
+      const launch = () => {
+        clearTimeout(hedge);
+        if (done) return;
+        if (next >= OVERPASS_MIRRORS.length) {
+          if (running === 0) finish(() => resolve(null));
+          return;
+        }
+        const attempt = next++;
+        const mirror = OVERPASS_MIRRORS[attempt]!;
+        running++;
+        onProgress?.({ kind: 'attempt', attempt, round });
+        hedge = setTimeout(launch, this.config.overpassHedgeDelay * 1000);
+        // POST (méthode recommandée par Overpass) : la requête voyage dans le corps.
+        this.http
+          .postForm(mirror, { data: query }, { signal: requests.signal, timeoutMs: this.timeoutMs })
+          .then((text) => {
+            const failure = overpassFailure(text);
+            if (failure) throw new Error(failure);
+            finish(() => resolve(text));
+          })
+          .catch((error: unknown) => {
+            if (done) return;
+            running--;
+            errors.push(`${new URL(mirror).host} : ${describe(error)}`);
+            launch();
+          });
+      };
+      if (signal.aborted) return reject(abortError());
+      signal.addEventListener('abort', onAbort, { once: true });
+      launch();
+    });
   }
 }
 
