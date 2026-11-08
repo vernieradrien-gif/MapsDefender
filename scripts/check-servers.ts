@@ -19,7 +19,7 @@ function option(name: string, fallback: string): string {
 const site = option('site', 'https://vernieradrien-gif.github.io/MapsDefender/');
 const address = option('query', 'Villagexpo, Saint-Michel-sur-Orge');
 const origin = new URL(site).origin;
-const TIMEOUT_MS = 25_000;
+const TIMEOUT_MS = 60_000;
 
 // Serveurs actuels du jeu et autres instances publiques connues.
 const SERVERS = [
@@ -28,8 +28,8 @@ const SERVERS = [
   'https://z.overpass-api.de/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.osm.ch/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter',
 ];
 
 interface Probe {
