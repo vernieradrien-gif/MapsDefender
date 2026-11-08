@@ -210,6 +210,43 @@ async function main(): Promise<void> {
     );
   };
 
+  // Couverture : un serveur régional répondrait vite… avec une carte vide hors de sa région.
+  log('--- Couverture (rues autour d’un point, hors navigateur) ---');
+  const spots: [string, string][] = [
+    ['Paris', '48.8580,2.2940,48.8600,2.2960'],
+    ['Bruxelles', '50.8460,4.3510,50.8480,4.3530'],
+    ['New York', '40.7570,-73.9870,40.7590,-73.9850'],
+    ['Tokyo', '35.6580,139.7000,35.6600,139.7020'],
+  ];
+  await Promise.all(
+    SERVERS.map(async (server) => {
+      const counts: string[] = [];
+      for (const [name, box] of spots) {
+        const probe: Probe = {
+          label: new URL(server).host,
+          url: server,
+          method: 'POST',
+          body: new URLSearchParams({ data: `[out:json][timeout:25];way["highway"](${box});out ids;` }).toString(),
+        };
+        const start = Date.now();
+        try {
+          const res = await fetch(probe.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: probe.body,
+            signal: AbortSignal.timeout(TIMEOUT_MS),
+          });
+          const text = await res.text();
+          const n = res.ok ? ((JSON.parse(text) as { elements?: unknown[] }).elements?.length ?? 0) : -1;
+          counts.push(`${name} ${res.ok ? `${n} rues` : `HTTP ${res.status}`} (${Date.now() - start} ms)`);
+        } catch (error) {
+          counts.push(`${name} ${error instanceof Error ? error.name : 'erreur'} (${Date.now() - start} ms)`);
+        }
+      }
+      log(`${new URL(server).host} : ${counts.join(' · ')}`);
+    }),
+  );
+
   log('--- Hors navigateur (statut brut, en-tête CORS renvoyé) ---');
   await run(direct, 'node');
 
