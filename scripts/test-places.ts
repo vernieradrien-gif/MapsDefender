@@ -56,24 +56,37 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type CachingHttp = HttpClient & { bytes: number };
 
+/**
+ * Clé de cache d'une requête : l'adresse, et pour un POST les champs du
+ * formulaire à la manière d'un GET (mêmes clés que les essais précédents).
+ */
+function cacheKey(url: string, form?: Record<string, string>): string {
+  if (!form) return url;
+  return `${url}?${Object.entries(form)
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&')}`;
+}
+
 /** Garde chaque réponse sur le disque ; --offline les rejoue sans réseau. */
 function cachingHttp(inner: HttpClient): CachingHttp {
-  const client = {
+  async function cached(key: string, fetcher: () => Promise<string>): Promise<string> {
+    const file = join(cacheDir, `${createHash('sha1').update(key).digest('hex').slice(0, 16)}.json`);
+    let text: string;
+    try {
+      text = await readFile(file, 'utf8');
+    } catch {
+      if (offline) throw new Error('réponse absente du cache');
+      text = await fetcher();
+      await mkdir(cacheDir, { recursive: true });
+      await writeFile(file, text);
+    }
+    client.bytes += text.length;
+    return text;
+  }
+  const client: CachingHttp = {
     bytes: 0,
-    async getText(url: string, options: { signal: AbortSignal; timeoutMs: number }) {
-      const file = join(cacheDir, `${createHash('sha1').update(url).digest('hex').slice(0, 16)}.json`);
-      let text: string;
-      try {
-        text = await readFile(file, 'utf8');
-      } catch {
-        if (offline) throw new Error('réponse absente du cache');
-        text = await inner.getText(url, options);
-        await mkdir(cacheDir, { recursive: true });
-        await writeFile(file, text);
-      }
-      client.bytes += text.length;
-      return text;
-    },
+    getText: (url, options) => cached(url, () => inner.getText(url, options)),
+    postForm: (url, form, options) => cached(cacheKey(url, form), () => inner.postForm(url, form, options)),
   };
   return client;
 }

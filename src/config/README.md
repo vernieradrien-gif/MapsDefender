@@ -161,8 +161,9 @@ Cartes créées dans l'appli à partir d'une adresse, d'un lieu ou de la positio
 | `minAverageRouteLength` | Longueur moyenne minimale des itinéraires (600 m, cahier des charges) ; en dessous, la zone est agrandie. |
 | `geocodeResults` | Résultats demandés à Nominatim (5), doublons retirés. |
 | `nominatimInterval` | Écart minimal entre deux requêtes Nominatim (1,1 s ; règle d'usage : une par seconde). |
-| `overpassTimeout` | Temps de calcul accordé au serveur Overpass (20 s). |
-| `requestTimeout` | Attente maximale d'une réponse (45 s) avant d'essayer le serveur suivant. Les serveurs publics chargés mettent souvent 30 à 45 s à répondre. |
+| `overpassTimeout` | Temps de calcul accordé au serveur Overpass (40 s) ; au-delà, il renvoie une réponse incomplète, comptée comme un échec. |
+| `requestTimeout` | Attente maximale de la réponse d'un serveur (60 s). Les serveurs publics chargés mettent souvent 20 à 45 s à répondre. |
+| `overpassHedgeDelay` | Relais entre serveurs (10 s) : si le serveur interrogé n'a pas répondu après ce délai, le suivant est aussi interrogé, sans abandonner le premier ; la première réponse complète gagne, les autres requêtes sont annulées. Un serveur en erreur passe la main tout de suite. Doit être inférieur à `requestTimeout`. |
 | `overpassRounds` | Tours de tous les serveurs avant d'abandonner (2 : un nouvel essai automatique). |
 | `overpassRetryPause` | Pause avant ce nouveau tour quand tous les serveurs sont saturés (30 s, règle d'usage du serveur principal). |
 | `cacheMaxMaps` | Cartes gardées sur l'appareil (20) ; les moins récemment jouées partent d'abord. |

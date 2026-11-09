@@ -1,0 +1,35 @@
+# Diagnostic : le jeu peut-il créer une carte depuis un navigateur de téléphone ?
+# Parcours réel du jeu construit (servi à l'adresse du site publié), puis
+# Nominatim et chaque serveur Overpass. Résultat dans le résumé de l'exécution.
+name: Diagnostic serveurs OSM
+
+# Lancement à la demande : onglet Actions → « Diagnostic serveurs OSM » → Run workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Build du jeu (comme pour GitHub Pages)
+        run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+
+      - name: Diagnostic (parcours du jeu, puis chaque serveur)
+        run: npx tsx scripts/check-servers.ts --local dist

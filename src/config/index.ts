@@ -245,6 +245,8 @@ export interface PlacesConfig {
   overpassTimeout: number;
   /** Attente maximale d'une réponse du réseau (s). */
   requestTimeout: number;
+  /** Sans réponse d'un serveur Overpass après ce délai (s), le suivant est aussi interrogé. */
+  overpassHedgeDelay: number;
   /** Tours de tous les serveurs Overpass avant d'abandonner (2 : un nouvel essai automatique). */
   overpassRounds: number;
   /** Pause avant un nouveau tour quand tous les serveurs sont saturés (s ; règle d'usage : 30 s). */
@@ -417,6 +419,8 @@ export function validateConfig(config: GameConfig): string[] {
   nonNegative(pl.nominatimInterval, 'places.nominatimInterval');
   positive(pl.overpassTimeout, 'places.overpassTimeout');
   if (!(pl.requestTimeout > pl.overpassTimeout)) errors.push('places.requestTimeout doit dépasser overpassTimeout');
+  positive(pl.overpassHedgeDelay, 'places.overpassHedgeDelay');
+  if (!(pl.overpassHedgeDelay < pl.requestTimeout)) errors.push('places.overpassHedgeDelay doit être inférieur à requestTimeout');
   positive(pl.overpassRounds, 'places.overpassRounds');
   nonNegative(pl.overpassRetryPause, 'places.overpassRetryPause');
   positive(pl.cacheMaxMaps, 'places.cacheMaxMaps');
